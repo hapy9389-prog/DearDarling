@@ -226,4 +226,122 @@ describe('대화 화면 핵심 동작', () => {
     expect(screen.queryByText('섞이면 안 되는 메시지')).not.toBeInTheDocument();
     expect(screen.getByText('아직 나눈 대화가 없어요')).toBeInTheDocument();
   });
+
+  it('같은 대화 안에서 상태를 바꿔도(정상 → AI 준비 중) 전송의 최종 상태가 표시된다', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
+
+    const input = screen.getByLabelText('메시지 입력') as HTMLInputElement;
+    await user.type(input, '상태 바꿔도 완료되는 메시지');
+    await user.click(screen.getByRole('button', { name: '전송' })); // '정상'으로 전송 시작(700ms 후 저장 완료)
+
+    // 정착되기 전에 같은 대화의 다른 상태('AI 준비 중')로 전환한다 — 연결·AI 상태만 다를 뿐 같은 대화다.
+    await user.click(screen.getByRole('button', { name: /검토 도구/ }));
+    await user.click(screen.getByRole('button', { name: /AI 준비 중/ }));
+    await user.click(screen.getByRole('button', { name: '검토 도구 닫기' }));
+
+    function findMyMessageRow() {
+      const bubble = within(screen.getByTestId('message-list')).getByText('상태 바꿔도 완료되는 메시지');
+      const row = bubble.parentElement;
+      if (!row) throw new Error('메시지 행을 찾을 수 없습니다.');
+      return row;
+    }
+
+    // 시나리오 이름만 비교하면 여기서 완료 결과를 버려 말풍선이 '전송 중'에 멈춘다 —
+    // 같은 대화이므로 '저장 완료'까지 화면에 반영되어야 한다.
+    await waitFor(
+      () => {
+        expect(within(findMyMessageRow()).getByText('저장 완료')).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  it('같은 대화 안에서 상태를 바꿔도 재시도의 최종 상태가 표시된다', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
+
+    // 연결 끊김으로 전환해 메시지를 '전송 실패'로 남긴다.
+    await user.click(screen.getByRole('button', { name: /검토 도구/ }));
+    await user.click(screen.getByRole('button', { name: /^연결 끊김/ }));
+    await user.click(screen.getByRole('button', { name: '검토 도구 닫기' }));
+
+    const input = screen.getByLabelText('메시지 입력') as HTMLInputElement;
+    await user.type(input, '재시도 후 상태 전환 메시지');
+    await user.click(screen.getByRole('button', { name: '전송' }));
+
+    function findMyMessageRow() {
+      const bubble = within(screen.getByTestId('message-list')).getByText('재시도 후 상태 전환 메시지');
+      const row = bubble.parentElement;
+      if (!row) throw new Error('메시지 행을 찾을 수 없습니다.');
+      return row;
+    }
+
+    await waitFor(
+      () => {
+        expect(within(findMyMessageRow()).getByText('전송 실패')).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+
+    // '정상'으로 돌아와 재시도를 시작하고, 정착되기 전에 'AI 준비 중'으로 전환한다.
+    await user.click(screen.getByRole('button', { name: /검토 도구/ }));
+    await user.click(screen.getByRole('button', { name: /^정상/ }));
+    await user.click(screen.getByRole('button', { name: '검토 도구 닫기' }));
+
+    await user.click(within(findMyMessageRow()).getByRole('button', { name: '다시 보내기' }));
+
+    await user.click(screen.getByRole('button', { name: /검토 도구/ }));
+    await user.click(screen.getByRole('button', { name: /AI 준비 중/ }));
+    await user.click(screen.getByRole('button', { name: '검토 도구 닫기' }));
+
+    // 같은 대화이므로 재시도 성공('저장 완료')이 화면에 반영되어야 한다('전송 중'에 멈추지 않는다).
+    await waitFor(
+      () => {
+        expect(within(findMyMessageRow()).getByText('저장 완료')).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  it('빈 대화를 나갔다 다시 들어오면 이전 방문의 늦은 전송 결과가 섞이지 않는다', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
+
+    // 빈 대화로 들어간다(첫 번째 방문).
+    await user.click(screen.getByRole('button', { name: /검토 도구/ }));
+    await user.click(screen.getByRole('button', { name: /빈 대화/ }));
+    await user.click(screen.getByRole('button', { name: '검토 도구 닫기' }));
+    expect(screen.getByText('아직 나눈 대화가 없어요')).toBeInTheDocument();
+
+    // 이 방문에서 메시지를 보낸다 — 같은 방문 동안에는 화면에 보인다.
+    const input = screen.getByLabelText('메시지 입력') as HTMLInputElement;
+    await user.type(input, '첫 방문에서 보낸 메시지');
+    await user.click(screen.getByRole('button', { name: '전송' }));
+    expect(
+      within(screen.getByTestId('message-list')).getByText('첫 방문에서 보낸 메시지'),
+    ).toBeInTheDocument();
+
+    // 정착되기 전에 빈 대화를 나갔다가(→ 정상) 다시 들어온다(두 번째 방문).
+    await user.click(screen.getByRole('button', { name: /검토 도구/ }));
+    await user.click(screen.getByRole('button', { name: /^정상/ }));
+    await user.click(screen.getByRole('button', { name: /빈 대화/ }));
+    await user.click(screen.getByRole('button', { name: '검토 도구 닫기' }));
+
+    // 두 번째 방문은 항상 빈 화면으로 시작한다.
+    expect(screen.getByText('아직 나눈 대화가 없어요')).toBeInTheDocument();
+
+    // 첫 방문 요청이 완료될 시간(700ms)이 지나도, 그 결과가 두 번째 방문 화면에 섞이면 안 된다.
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 900));
+    });
+    expect(screen.queryByText('첫 방문에서 보낸 메시지')).not.toBeInTheDocument();
+    expect(screen.getByText('아직 나눈 대화가 없어요')).toBeInTheDocument();
+  });
 });

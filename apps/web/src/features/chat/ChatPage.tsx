@@ -4,7 +4,7 @@ import { useSettings } from '../../state/SettingsContext';
 import { useScenario } from '../../state/ScenarioContext';
 import { createMockChatService } from '../../mocks/services/chatService';
 import { createMockCoachingService } from '../../mocks/services/coachingService';
-import type { ChatDevScenario, ChatMessage } from '../../mocks/types';
+import type { ChatMessage } from '../../mocks/types';
 import type { CoachingAreaState } from './chatTypes';
 import { filterVisibleMessages, selectSavedMessages, upsertMessage } from './chatTypes';
 import { PartnerProfileHeader } from './PartnerProfileHeader';
@@ -24,14 +24,10 @@ export function ChatPage() {
 
   const chatService = useMemo(() => createMockChatService({ scenario }), [scenario]);
 
-  // 전송 중에 시나리오를 바꿔도, 그 사이 완료된 예전 요청의 결과가 지금 보고 있는 화면에
-  // 섞이지 않도록 "이 요청을 시작했을 때의 시나리오"와 "지금 시나리오"를 비교하는 데 쓴다.
-  // 전송·재시도는 700ms 뒤에 끝나므로, 이펙트에서 한 박자 늦게 갱신해도 그보다 훨씬 먼저
-  // 최신값이 반영되어 문제없다(렌더 중 ref를 직접 쓰는 것은 React 규칙상 금지되어 있다).
-  const latestScenarioRef = useRef<ChatDevScenario>(scenario);
-  useEffect(() => {
-    latestScenarioRef.current = scenario;
-  }, [scenario]);
+  // '정상/AI 준비 중/AI 장애/연결 끊김'은 연결·AI 상태만 다른 같은 하나의 대화이고,
+  // '빈 대화'만 저장 공간이 없는 별개의 대화다(docs/decisions/0002 §2). 전송 완료 결과를
+  // 지금 화면에 반영할지 판단할 때는 시나리오 이름이 아니라 이 "대화 식별값"으로 비교한다.
+  const conversationId: 'main' | 'empty' = scenario === 'empty' ? 'empty' : 'main';
 
   const [messages, setMessages] = useState<ChatMessage[]>(() =>
     chatService.listMessages(account.coupleId),
@@ -50,6 +46,28 @@ export function ChatPage() {
     setMessages(chatService.listMessages(account.coupleId));
     setHighlightedIds([]);
   }
+
+  // '빈 대화'는 들어올 때마다 새로운 "방문"이다 — 나갔다 다시 들어오면 이전 방문에서 진행 중이던
+  // 전송의 늦은 결과가 이번 빈 화면에 섞이면 안 된다. 대화(conversationId)가 바뀔 때마다 방문
+  // 번호를 올려, "이 전송을 시작한 방문"과 "지금 방문"을 구분한다.
+  const [visit, setVisit] = useState(0);
+  const [loadedConversationId, setLoadedConversationId] = useState(conversationId);
+  if (loadedConversationId !== conversationId) {
+    setLoadedConversationId(conversationId);
+    setVisit((v) => v + 1);
+  }
+
+  // 전송·재시도가 끝났을 때 그 결과를 지금 화면에 반영해도 되는지 판단하는 기준값.
+  // - 같은 대화('main')면 그 사이 상태만 바꿔도(예: 정상 → AI 준비 중) 결과를 반영한다.
+  //   시나리오 이름만 비교하면 이 경우에도 결과를 버려 말풍선이 '전송 중'에 멈춰버린다.
+  // - '빈 대화'는 저장이 없으므로 방문이 다르면(나갔다 다시 들어오면) 이전 방문 결과를 버린다.
+  // 전송·재시도는 700ms 뒤에 끝나므로, 이펙트에서 한 박자 늦게 갱신해도 그보다 훨씬 먼저
+  // 최신값이 반영되어 문제없다(렌더 중 ref를 직접 읽고 쓰는 것은 React 규칙상 피한다).
+  const reconcileToken = conversationId === 'empty' ? `empty#${visit}` : 'main';
+  const latestReconcileTokenRef = useRef(reconcileToken);
+  useEffect(() => {
+    latestReconcileTokenRef.current = reconcileToken;
+  }, [reconcileToken]);
 
   // 테스트 계정을 전환하면 아직 보내지 않은 초안·확인 대기 중인 추천은 새 계정으로 넘어가지 않는다.
   const [draftForAccountId, setDraftForAccountId] = useState(account.id);
@@ -114,9 +132,10 @@ export function ChatPage() {
     const text = rawText.trim();
     if (!text) return;
     const clientMessageId = crypto.randomUUID();
-    // 이 요청을 시작하는 시점의 시나리오를 기억해 둔다 — 응답이 돌아왔을 때 시나리오가
-    // 이미 바뀌었다면(latestScenarioRef.current와 다르면) 그 결과를 화면에 반영하지 않는다.
-    const requestScenario = scenario;
+    // 이 요청을 시작한 시점의 대화 식별값을 기억해 둔다 — 완료됐을 때 값이 달라졌으면
+    // (다른 대화로 갔거나, '빈 대화'를 나갔다 다시 들어왔으면) 그 결과를 화면에 반영하지 않는다.
+    const requestToken = reconcileToken;
+    const isForCurrentView = () => latestReconcileTokenRef.current === requestToken;
     setDraft('');
     setIsSending(true);
     try {
@@ -124,12 +143,12 @@ export function ChatPage() {
         { coupleId: account.coupleId, senderId: account.id, body: text, clientMessageId },
         {
           onPending: (msg) => {
-            if (latestScenarioRef.current !== requestScenario) return;
+            if (!isForCurrentView()) return;
             setMessages((prev) => upsertMessage(prev, msg));
           },
         },
       );
-      if (latestScenarioRef.current === requestScenario) {
+      if (isForCurrentView()) {
         setMessages((prev) => upsertMessage(prev, settled));
       }
     } finally {
@@ -138,16 +157,17 @@ export function ChatPage() {
   }
 
   async function handleRetry(messageId: string) {
-    const requestScenario = scenario;
+    const requestToken = reconcileToken;
+    const isForCurrentView = () => latestReconcileTokenRef.current === requestToken;
     setIsSending(true);
     try {
       const settled = await chatService.retryMessage(account.coupleId, messageId, {
         onPending: (msg) => {
-          if (latestScenarioRef.current !== requestScenario) return;
+          if (!isForCurrentView()) return;
           setMessages((prev) => upsertMessage(prev, msg));
         },
       });
-      if (latestScenarioRef.current === requestScenario) {
+      if (isForCurrentView()) {
         setMessages((prev) => upsertMessage(prev, settled));
       }
     } finally {
