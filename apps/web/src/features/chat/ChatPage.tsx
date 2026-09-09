@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react';
 import { useActiveAccount } from '../../state/ActiveAccountContext';
 import { useSettings } from '../../state/SettingsContext';
 import { useScenario } from '../../state/ScenarioContext';
+import { usePatterns } from '../../state/PatternContext';
 import { createMockChatService } from '../../mocks/services/chatService';
 import { createMockCoachingService } from '../../mocks/services/coachingService';
 import type { ChatMessage } from '../../mocks/types';
@@ -21,6 +22,7 @@ export function ChatPage() {
   const { account, partner } = useActiveAccount();
   const settings = useSettings();
   const { scenario } = useScenario();
+  const { excludedPatternIds } = usePatterns();
 
   const chatService = useMemo(() => createMockChatService({ scenario }), [scenario]);
 
@@ -106,10 +108,13 @@ export function ChatPage() {
         scenario,
         // 저장이 확정된 메시지만 근거로 쓴다(전송 중·실패 메시지는 제외).
         availableMessages: selectSavedMessages(messages),
+        // 코칭 카드 숨김 다음, 실제 제안보다 앞선 단계 — 관찰 코칭 활용 중단(0004 §5).
+        excludedPatternIds,
       });
       if (cancelled) return;
 
       if (result.status === 'failure') setCoachingArea({ kind: 'failure' });
+      else if (result.status === 'withheld-optout') setCoachingArea({ kind: 'withheld-optout' });
       else if (result.status === 'ready')
         setCoachingArea({ kind: 'ready', suggestion: result.suggestion });
       else setCoachingArea({ kind: 'idle' });
@@ -126,6 +131,7 @@ export function ChatPage() {
     settings.mine.analysisConsent,
     messages,
     account.id,
+    excludedPatternIds,
   ]);
 
   async function handleSend(rawText: string) {

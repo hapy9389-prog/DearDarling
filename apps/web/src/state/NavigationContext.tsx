@@ -6,12 +6,14 @@ import { devKey, readJSON, writeJSON } from '../mocks/storage';
  * 가입·로그인·연인 연결처럼 히스토리·딥링크가 필요한 화면이 생기면 그때 라우터를 도입한다.
  */
 export type AppTab = 'home' | 'chat' | 'week' | 'memories';
-export type AppScreen = AppTab | 'settings';
+/** 'settings'·'ask'는 탭이 아니라 하위 화면(← 버튼으로 돌아온다). */
+export type AppScreen = AppTab | 'settings' | 'ask';
 
 export const APP_TABS: { id: AppTab; label: string; icon: string }[] = [
   { id: 'home', label: '홈', icon: '🏠' },
   { id: 'chat', label: '대화', icon: '💬' },
-  { id: 'week', label: '이번 주 우리', icon: '🗓️' },
+  // 내부 id는 'week'지만, 주간 리포트 + AI 상담을 아우르므로 라벨은 '우리'.
+  { id: 'week', label: '우리', icon: '🗓️' },
   { id: 'memories', label: '추억', icon: '📷' },
 ];
 

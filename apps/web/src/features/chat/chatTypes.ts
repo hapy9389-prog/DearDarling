@@ -6,6 +6,7 @@ export type CoachingAreaState =
   | { kind: 'failure' }
   | { kind: 'consent-pending'; reason: 'self' | 'partner' }
   | { kind: 'hidden' }
+  | { kind: 'withheld-optout' }
   | { kind: 'idle' }
   | { kind: 'ready'; suggestion: CoachingSuggestion };
 

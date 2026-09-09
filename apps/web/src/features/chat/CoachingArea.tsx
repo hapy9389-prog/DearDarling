@@ -51,6 +51,14 @@ export function CoachingArea({
     );
   }
 
+  if (state.kind === 'withheld-optout') {
+    return (
+      <InfoBar tone="muted" icon="🚫">
+        이 관찰을 코칭에 사용하지 않기로 해서 관련 코칭을 표시하지 않아요.
+      </InfoBar>
+    );
+  }
+
   return (
     <ReadyCoachingCard
       insight={state.suggestion.insight}

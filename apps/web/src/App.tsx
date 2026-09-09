@@ -5,6 +5,7 @@ import { NavigationProvider } from './state/NavigationContext';
 import { ActiveAccountProvider } from './state/ActiveAccountContext';
 import { ScenarioProvider } from './state/ScenarioContext';
 import { SettingsProvider } from './state/SettingsContext';
+import { PatternProvider } from './state/PatternContext';
 
 export function App() {
   return (
@@ -12,10 +13,12 @@ export function App() {
       <ScenarioProvider>
         <ActiveAccountProvider>
           <SettingsProvider>
-            <ScreenContainer>
-              <AppShell />
-              <DevPanel />
-            </ScreenContainer>
+            <PatternProvider>
+              <ScreenContainer>
+                <AppShell />
+                <DevPanel />
+              </ScreenContainer>
+            </PatternProvider>
           </SettingsProvider>
         </ActiveAccountProvider>
       </ScenarioProvider>

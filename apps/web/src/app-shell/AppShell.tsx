@@ -6,6 +6,7 @@ import { HomePage } from '../features/home/HomePage';
 import { WeekPage } from '../features/week/WeekPage';
 import { MemoriesPage } from '../features/memories/MemoriesPage';
 import { SettingsPage } from '../features/settings/SettingsPage';
+import { AskAiPage } from '../features/ask/AskAiPage';
 
 export function AppShell() {
   const { screen } = useNavigation();
@@ -31,6 +32,7 @@ export function AppShell() {
         {screen === 'week' && <WeekPage />}
         {screen === 'memories' && <MemoriesPage />}
         {screen === 'settings' && <SettingsPage />}
+        {screen === 'ask' && <AskAiPage />}
       </div>
       <BottomNav />
     </div>

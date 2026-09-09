@@ -16,8 +16,8 @@ describe('4탭 내비게이션', () => {
     // 기본 진입 = 홈
     expect(screen.getByText(/함께한 지 [\d,]+일/)).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '이번 주 우리' }));
-    expect(screen.getByText('주간 리포트는 곧 준비돼요')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '우리' }));
+    expect(screen.getByText('소통 패턴 관찰')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '추억' }));
     expect(screen.getByText('추억 화면 준비 중')).toBeInTheDocument();

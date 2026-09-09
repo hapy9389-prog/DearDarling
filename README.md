@@ -6,14 +6,14 @@
 
 **화면 검토 단계 (가상 데이터).** 실제 인증·DB·AI·AWS는 아직 연결되어 있지 않다. 목적은 화면 구성과 사용 흐름을 가상 데이터로 먼저 검토하는 것이며, 검토 후 단계적으로 실제 기능을 연결한다.
 
-| 영역                 | 상태                                                                                             |
-| -------------------- | ------------------------------------------------------------------------------------------------ |
-| `apps/web`           | ✅ 진행 중 — 화면(홈·대화·이번 주 우리·추억·설정, 가상 데이터). 홈·4탭 완료, 나머지 화면 진행 중 |
-| `apps/api`           | ⏳ 예정 — 실제 인증·DB 연결 단계                                                                 |
-| `apps/worker`        | ⏳ 예정 — AI 작업 처리기                                                                         |
-| `packages/contracts` | ⏳ 예정 — 공유 타입·API 계약 (`apps/web/src/mocks/types.ts`에서 추출 예정)                       |
-| `packages/domain`    | ⏳ 예정 — 공유 도메인 로직                                                                       |
-| `infra`              | ⏳ 예정 — AWS 배포 구성                                                                          |
+| 영역                 | 상태                                                                                                                         |
+| -------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
+| `apps/web`           | ✅ 진행 중 — 화면(홈·대화·우리·추억·설정, 가상 데이터). 홈·4탭·설정·'우리'(주간 리포트·패턴 관찰·AI 상담) 완료, 추억 진행 중 |
+| `apps/api`           | ⏳ 예정 — 실제 인증·DB 연결 단계                                                                                             |
+| `apps/worker`        | ⏳ 예정 — AI 작업 처리기                                                                                                     |
+| `packages/contracts` | ⏳ 예정 — 공유 타입·API 계약 (`apps/web/src/mocks/types.ts`에서 추출 예정)                                                   |
+| `packages/domain`    | ⏳ 예정 — 공유 도메인 로직                                                                                                   |
+| `infra`              | ⏳ 예정 — AWS 배포 구성                                                                                                      |
 
 ## 개발 환경
 
@@ -49,3 +49,4 @@ docs             설계 문서, 의사결정 기록
 - [`docs/decisions/0003-app-navigation-and-screens.md`](./docs/decisions/0003-app-navigation-and-screens.md) — 4탭 내비게이션(홈·대화·이번 주 우리·추억), 설정은 홈 상단 버튼, 상태 기반 화면 전환, 대화 화면 상시 마운트
 - [`docs/decisions/0004-pattern-observation-and-coaching-use.md`](./docs/decisions/0004-pattern-observation-and-coaching-use.md) — 소통 패턴 관찰·의견·코칭 활용 중단 모델('양측 맞아요 확인' 방식 대체)
 - [`docs/decisions/0005-future-requirements-and-follow-ups.md`](./docs/decisions/0005-future-requirements-and-follow-ups.md) — 후속 화면·기능(가입·로그인·연인 연결, 사진·영상 전송·AI 분석 등)과 보류 항목
+- [`docs/decisions/0006-us-tab-and-ai-consultation.md`](./docs/decisions/0006-us-tab-and-ai-consultation.md) — '우리' 탭(주간 리포트·패턴 관찰·의견·코칭 활용 중단)과 AI 개인 상담 진입점

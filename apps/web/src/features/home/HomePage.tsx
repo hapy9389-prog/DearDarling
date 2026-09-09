@@ -78,10 +78,10 @@ export function HomePage() {
 
         <button
           type="button"
-          onClick={() => analysisActive && navigate('week')}
+          onClick={() => navigate('week')}
           className="rounded-2xl border border-border bg-canvas-raised px-4 py-4 text-left"
         >
-          <p className="eyebrow mb-1 text-ink-faint">이번 주 우리</p>
+          <p className="eyebrow mb-1 text-ink-faint">우리</p>
           {analysisActive ? (
             <p className="text-sm leading-relaxed text-ink-soft">
               지난주 대화 리포트는 매주 월요일에 도착해요.{' '}
@@ -89,7 +89,8 @@ export function HomePage() {
             </p>
           ) : (
             <p className="text-sm leading-relaxed text-ink-soft">
-              AI 분석이 중단되어 리포트가 생성되지 않아요.
+              AI 분석이 중단되어 리포트가 생성되지 않아요.{' '}
+              <span className="text-accent">우리 탭 열기 →</span>
             </p>
           )}
         </button>

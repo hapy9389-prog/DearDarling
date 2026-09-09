@@ -62,11 +62,11 @@ describe('홈 화면', () => {
     expect(screen.getByText('예시')).toBeInTheDocument();
   });
 
-  it('리포트 안내를 누르면 이번 주 우리로 이동한다', async () => {
+  it('리포트 안내를 누르면 우리 탭으로 이동한다', async () => {
     const user = userEvent.setup();
     render(<App />);
 
     await user.click(screen.getByText(/지난주 대화 리포트는 매주 월요일에 도착해요/));
-    expect(screen.getByText('주간 리포트는 곧 준비돼요')).toBeInTheDocument();
+    expect(screen.getByText('소통 패턴 관찰')).toBeInTheDocument();
   });
 });
