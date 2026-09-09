@@ -22,6 +22,10 @@
 
 ### 3. 소통 패턴 관찰 카드 — 처음 화면에서 읽을 양을 줄인다
 
+> **갱신됨: 이 절의 화면 구성은 `docs/decisions/0007`로 대체됐다.** '우리' 탭은 이제 통계를
+> 상단에 두고 이번 주 대표 발견 하나를 중심으로 구성하며, 카드별 `미확인 가설` 칩을 없애고 상단
+> 안내 한 줄로 대신한다. 아래 §4·§5의 의견·코칭 활용 중단 규칙과 §6·§8은 그대로 유효하다.
+
 처음 화면에는 **관찰 한 줄 + 제안 한 줄 + '자세히 보기'**만 보여준다. 근거·의견·의견 작성·코칭
 제외 조작은 카드별 펼침 영역에 둔다.
 
@@ -111,14 +115,15 @@
 ## 검증
 
 - `apps/web/src/mocks/domain/__tests__/patterns.test.ts` — `isExcludedFromCoaching`,
-  `canRevokeOptOut`(본인 것만), `opinionSummary`(중립), `observationStatusLabel`(중단됨 우선).
+  `canRevokeOptOut`(본인 것만), `opinionSummary`(중립), `coachingExclusionNote`(제외 시 부드러운
+  문구, 아니면 null — 0007에서 `observationStatusLabel` 대체).
 - `apps/web/src/mocks/services/__tests__/patternService.test.ts` — 의견 `authorId` 검증,
   민준 제외 → 서연 해제 불가 → 민준 해제로 복구, 두 사람 제외 시 한 명 해제해도 유지.
-- `apps/web/src/features/week/__tests__/WeekPage.test.tsx` — 요약/펼침 구조(접기·펼치기), 잠정
-  안내 반복 제거, 제외 카드는 접혀도 상태 표시, 의견 입력 전 공유 안내, 두 사람 의견 중립 표시,
-  **의견 작성·수정 중 계정 전환 시 초안 폐기**, 제외 시 제안 가림, **한쪽 제외가 두 계정 대화
-  코칭에 반영**(해제 시 복구, 양쪽 제외 시 마지막 해제까지 유지), 분석 철회/`empty`/
-  `ai-warming-up`/`ai-failure` 구분, `coachingVisible`만 끈 경우 리포트 유지, 통계 접힘.
+- `apps/web/src/features/week/__tests__/WeekPage.test.tsx` — **0007에서 재작성됨.** 상단 통계
+  스트립, 대표 발견 하나, `다른 발견 보기`, 의견 입력 전 공유 안내, 두 사람 의견 중립 표시,
+  **의견 작성·수정 중 계정 전환 시 초안 폐기**, 대표 발견 제외 시 실천 제안 가림, **한쪽 제외가
+  두 계정 대화 코칭에 반영**(해제 시 복구, 양쪽 제외 시 마지막 해제까지 유지), '대화 부족' vs
+  '특별한 발견 없음' 구분, 분석 철회/`ai-warming-up`/`ai-failure`, `coachingVisible`만 끈 경우 유지.
 - `apps/web/src/features/ask/__tests__/AskAiPage.test.tsx` — 진입·뒤로·하단 탭 비활성, 공유/개인
   구분 및 비공개 안내, 자유 입력창 비활성, 예시 질문 → 예시 답변, 계정 전환 시 내역 초기화,
   답변 대기 중 전환 시 늦은 답변 미표시, **타이머 제어로 민준→서연→민준 왕복 시 이전 세션

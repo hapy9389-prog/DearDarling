@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { useActiveAccount } from '../../state/ActiveAccountContext';
 import { SCENARIO_OPTIONS, useScenario } from '../../state/ScenarioContext';
+import { usePatterns } from '../../state/PatternContext';
 import { resetAllMockData } from '../../mocks/storage';
 import { Avatar } from '../../shared/components/Avatar';
 
@@ -35,6 +36,8 @@ export function DevPanel() {
             <AccountSwitcherSection />
             <div className="my-4 h-px bg-border" />
             <ScenarioSection />
+            <div className="my-4 h-px bg-border" />
+            <WeeklyReportSection />
             <div className="my-4 h-px bg-border" />
             <ResetSection />
           </div>
@@ -99,6 +102,38 @@ function ScenarioSection() {
           </button>
         ))}
       </div>
+    </section>
+  );
+}
+
+function WeeklyReportSection() {
+  const { weeklyFindingsPresent, setWeeklyFindingsPresent } = usePatterns();
+  return (
+    <section>
+      <h2 className="eyebrow mb-2 text-ink-soft">주간 리포트 · 이번 주 발견</h2>
+      <div className="flex gap-2">
+        {[
+          { present: true, label: '이번 주 발견 있음' },
+          { present: false, label: '이번 주 발견 없음' },
+        ].map((opt) => (
+          <button
+            key={opt.label}
+            type="button"
+            onClick={() => setWeeklyFindingsPresent(opt.present)}
+            className={`flex-1 rounded-xl border px-3 py-2 text-sm ${
+              opt.present === weeklyFindingsPresent
+                ? 'border-coaching bg-coaching-soft text-coaching'
+                : 'border-border text-ink-soft'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-ink-soft">
+        ‘이번 주 발견 없음’으로 두면 관찰·대표 발견 없이 통계와 ‘눈에 띈 흐름 없음’ 안내만 보여요.
+        대화 자체가 적은 ‘빈 대화’ 상태와는 다른 화면이에요.
+      </p>
     </section>
   );
 }

@@ -42,10 +42,9 @@ export function opinionSummary(observation: PatternObservation): 'none' | 'one' 
 }
 
 /**
- * 관찰의 상태 라벨. '코칭에서 제외됨'이 의견 라벨보다 우선한다(0004 §4 — 문구만 '제외됨'으로 통일).
- * 의견 유무와 관계없이 관찰은 항상 "미확인 가설"이다.
+ * 코칭 활용 중단 상태를 부드럽게 알리는 한 줄. 제외가 아니면 null(0007 — '미확인 가설' 칩 제거,
+ * '코칭에서 제외됨' 대신 이 톤으로 통일). 의견 유무는 이 문구에 영향을 주지 않는다.
  */
-export function observationStatusLabel(observation: PatternObservation): string {
-  if (isExcludedFromCoaching(observation)) return '코칭에서 제외됨';
-  return '미확인 가설';
+export function coachingExclusionNote(observation: PatternObservation): string | null {
+  return isExcludedFromCoaching(observation) ? '지금은 코칭에 사용하지 않고 있어요' : null;
 }

@@ -35,7 +35,7 @@ describe('AI에게 물어보기 (개인 상담)', () => {
     expect(screen.queryByRole('button', { current: 'page' })).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '우리 탭으로' }));
-    expect(screen.getByText('소통 패턴 관찰')).toBeInTheDocument();
+    expect(screen.getByText('이번 주 눈에 띈 우리 모습')).toBeInTheDocument();
   });
 
   it('공유 리포트와 개인 상담을 구분하고, 자동 공개하지 않는다고 안내한다', async () => {

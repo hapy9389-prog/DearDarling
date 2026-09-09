@@ -11,25 +11,36 @@ export const SEED_WEEK_OF = '2026-09-07';
 const SEEDED_AT = '2026-09-08T09:00:00.000Z';
 
 /**
- * 상태별 시드 관찰(docs/decisions/0004 §7):
- * - pat-1: 관찰만 있음. **SEED_COACHING_SUGGESTIONS(양측)가 이 관찰에 연결된다** — 기본 상태에서
- *   대화 코칭이 정상 동작하도록 제외되지 않은 관찰에 연결하고, 리뷰어가 이 관찰의 코칭 활용 중단을
- *   켜서 "두 계정 코칭에 반영되는 흐름"을 검토한다.
+ * 상태별 시드 관찰(docs/decisions/0004 §7, 0007):
+ * - pat-1: 이번 주 **대표 발견**(SEED_WEEKLY_REPORT.headlineObservationId). title·interpretation·
+ *   evidenceQuotes로 풍부하게 채운다. **SEED_COACHING_SUGGESTIONS(양측)가 이 관찰에 연결된다** —
+ *   기본 상태에서 대화 코칭이 정상 동작하고, 리뷰어가 이 관찰의 코칭 활용 중단을 켜서
+ *   "두 계정 코칭에 반영되는 흐름"과 "대표 발견의 실천 제안 가림"을 함께 검토한다.
  * - pat-2: 한쪽(민준)만 의견을 남김.
  * - pat-3: 두 사람이 의견을 남김(중립적으로 나란히 표시, "해석이 갈렸다"로 라벨링하지 않음).
  * - pat-4: 서연이 코칭 활용을 중단함(이미 제외된 표시 상태 검토용).
  *
- * observation 문구는 "잠정 관찰"임을 매 줄 반복하지 않는다 — '우리' 탭이 섹션 헤더와 카드의
- * '미확인 가설' 칩으로 한 번씩만 알린다. 대신 확정된 사실처럼 들리지 않게 관찰형으로만 쓴다.
+ * observation 문구는 확정된 사실처럼 들리지 않게 관찰형으로만 쓴다. 잠정 안내는 '우리' 탭 상단에서
+ * 한 번만 한다(0007 — 카드별 '미확인 가설' 칩 제거).
  */
 export const SEED_PATTERN_OBSERVATIONS: PatternObservation[] = [
   {
     id: 'pat-1',
     coupleId: COUPLE_ID,
     weekOf: SEED_WEEK_OF,
+    title: '무거운 대화를 한 번에 끝내지 않아요',
     observation:
-      '힘든 얘기가 나오면 그날은 짧게 마무리하고, 며칠 뒤 다시 챙겨보는 흐름이 있었어요.',
+      '힘든 얘기가 나온 날은 대화를 짧게 맺고, 며칠 뒤에 그 얘기를 다시 꺼낸 적이 있었어요.',
+    interpretation: [
+      '당장 깊게 들어가기보다 서로에게 시간을 두는 방식일 수 있어요.',
+      '다시 꺼낸 쪽도 받아준 쪽도 그 사이 마음을 정리할 여유가 있었던 것으로 보여요.',
+    ],
     evidenceText: '“요즘 좀 힘들었어. 별일 아닌데 그냥 그래”에 “오늘은 일단 좀 쉬자”로 답한 부분',
+    evidenceQuotes: [
+      '“요즘 좀 힘들었어. 별일 아닌데 그냥 그래”에 “오늘은 일단 좀 쉬자”로 답하고 그날 대화를 짧게 맺은 부분',
+      '며칠 뒤 “저번에 힘들다고 했잖아, 지금은 좀 괜찮아?”라고 먼저 물어본 부분',
+    ],
+    flow: ['힘든 얘기', '그날은 짧게', '며칠 뒤 다시'],
     evidenceMessageIds: [EVIDENCE_MESSAGE_ID],
     suggestion: '다음 날 짧게 “그때 얘기 더 해도 돼”라고 먼저 열어두면 이어가기 편해요.',
     opinions: [],
@@ -99,8 +110,12 @@ export const SEED_WEEKLY_REPORT: WeeklyReport = {
   coupleId: COUPLE_ID,
   weekOf: SEED_WEEK_OF,
   deliveredAt: '2026-09-07T00:10:00.000Z',
+  // 대표 발견은 pat-1. 실제 분석에서 눈에 띄는 관찰이 없으면 null로 두고 억지로 만들지 않는다(0007).
+  headlineObservationId: 'pat-1',
   stats: {
     totalMessages: 214,
+    daysWithConversation: 7,
+    activeDaysTotal: 7,
     byWeekday: [
       { weekday: '월', count: 26 },
       { weekday: '화', count: 31 },
@@ -110,9 +125,10 @@ export const SEED_WEEKLY_REPORT: WeeklyReport = {
       { weekday: '토', count: 39 },
       { weekday: '일', count: 28 },
     ],
+    // 통계로 뒷받침되는 범위만 — 시간대('저녁') 같은 근거 없는 단정은 쓰지 않는다(0007).
     highlights: [
-      '금요일 저녁에 대화가 가장 활발했어요.',
-      '“고생했다”처럼 서로를 다독이는 말이 자주 오갔어요.',
+      '금요일에 주고받은 메시지가 가장 많았어요.',
+      '“고생했다”, “고마워”처럼 서로를 다독이는 말이 자주 오갔어요.',
     ],
   },
 };

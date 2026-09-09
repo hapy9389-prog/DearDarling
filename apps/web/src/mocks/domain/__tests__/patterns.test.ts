@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
   canRevokeOptOut,
+  coachingExclusionNote,
   hasOptedOut,
   isExcludedFromCoaching,
-  observationStatusLabel,
   opinionSummary,
   ownOpinion,
 } from '../patterns';
@@ -96,26 +96,26 @@ describe('opinionSummary — 중립 요약 (갈렸다 판정 없음)', () => {
   });
 });
 
-describe('observationStatusLabel — 코칭에서 제외됨이 우선', () => {
-  it('기본은 미확인 가설', () => {
-    expect(observationStatusLabel(makeObservation())).toBe('미확인 가설');
+describe('coachingExclusionNote — 제외 상태만 부드럽게 알린다', () => {
+  it('제외가 아니면 null (미확인 가설 칩은 더 이상 없다)', () => {
+    expect(coachingExclusionNote(makeObservation())).toBeNull();
   });
 
-  it('의견을 두 사람이 남겨도 여전히 미확인 가설', () => {
+  it('의견을 두 사람이 남겨도, 제외가 아니면 여전히 null (확정 사실로 바뀌지 않는다)', () => {
     const observation = makeObservation({
       opinions: [
         { id: 'o1', authorId: 'user-minjun', text: 'a', createdAt: 'x', updatedAt: 'x' },
         { id: 'o2', authorId: 'user-seoyeon', text: 'b', createdAt: 'x', updatedAt: 'x' },
       ],
     });
-    expect(observationStatusLabel(observation)).toBe('미확인 가설');
+    expect(coachingExclusionNote(observation)).toBeNull();
   });
 
-  it('코칭에서 제외되면 그 라벨이 우선한다', () => {
+  it('코칭에서 제외되면 부드러운 문구를 돌려준다', () => {
     const observation = makeObservation({
       opinions: [{ id: 'o1', authorId: 'user-minjun', text: 'a', createdAt: 'x', updatedAt: 'x' }],
       coachingOptOuts: [{ userId: 'user-seoyeon', createdAt: 'x' }],
     });
-    expect(observationStatusLabel(observation)).toBe('코칭에서 제외됨');
+    expect(coachingExclusionNote(observation)).toBe('지금은 코칭에 사용하지 않고 있어요');
   });
 });

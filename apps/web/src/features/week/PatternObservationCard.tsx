@@ -2,25 +2,25 @@ import { useState } from 'react';
 import { useActiveAccount } from '../../state/ActiveAccountContext';
 import { usePatterns } from '../../state/PatternContext';
 import {
+  coachingExclusionNote,
   hasOptedOut,
   isExcludedFromCoaching,
-  observationStatusLabel,
   opinionSummary,
   ownOpinion,
 } from '../../mocks/domain/patterns';
 import type { PatternObservation, PatternOpinion } from '../../mocks/types';
 
 /**
- * 소통 패턴 관찰 카드. 처음 화면에서 읽을 양을 줄이려고, 기본은 **관찰 한 줄 + 제안 한 줄 +
- * 자세히 보기**만 보여준다. 근거·의견·의견 작성·코칭 제외 조작은 카드별 펼침 영역에 있다.
- * 제외된 카드는 접힌 상태에서도 '코칭에서 제외됨' 칩으로 상태를 알린다.
- * 관찰은 항상 "미확인 가설"이다 — 상대의 성향·감정을 단정하지 않는다(docs/decisions/0004).
+ * '다른 발견 보기'에 들어가는 보조 관찰 카드(docs/decisions/0007). 기본은 **관찰 한 줄 + 작은 실천
+ * 한 줄 + 자세히 보기**만 보여주고, 공개·적용 범위 안내·근거·의견·코칭 제외 조작은 펼침 영역에 둔다.
+ * '미확인 가설' 칩은 쓰지 않는다 — 잠정 안내는 '우리' 탭 상단에서 한 번만 한다. 제외된 카드는
+ * 접혀 있어도 '지금은 코칭에 사용하지 않고 있어요'로 부드럽게 알린다. 관찰은 의견이 없거나 두
+ * 사람이 남겨도 확정된 사실로 바뀌지 않는다.
  */
 export function PatternObservationCard({ observation }: { observation: PatternObservation }) {
   const { account } = useActiveAccount();
   const excluded = isExcludedFromCoaching(observation);
-  const statusLabel = observationStatusLabel(observation);
-  const summary = opinionSummary(observation);
+  const exclusionNote = coachingExclusionNote(observation);
   const [expanded, setExpanded] = useState(false);
 
   // 계정을 전환하면 이 카드를 접는다 — 새 계정 시점에서 다시 펼쳐 보게 한다.
@@ -34,21 +34,15 @@ export function PatternObservationCard({ observation }: { observation: PatternOb
 
   return (
     <section className="rounded-2xl border border-border bg-canvas-raised px-4 py-3.5">
-      <span
-        className={`eyebrow inline-block rounded-full px-2 py-0.5 ${
-          excluded ? 'bg-pending-soft text-pending' : 'bg-canvas text-ink-faint'
-        }`}
-      >
-        {statusLabel}
-      </span>
-
-      <p className="mt-1.5 text-sm leading-snug text-ink">{observation.observation}</p>
+      <p className="text-sm leading-snug text-ink">{observation.observation}</p>
 
       {excluded ? (
-        <p className="mt-1 text-xs text-ink-faint">코칭에서 제외돼 관련 제안은 가려져 있어요.</p>
+        <p className="mt-1 text-xs text-ink-faint">
+          {exclusionNote} — 관련 실천 제안은 표시하지 않아요.
+        </p>
       ) : (
         <p className="mt-1 text-xs leading-relaxed text-coaching">
-          제안 · {observation.suggestion}
+          작은 실천 · {observation.suggestion}
         </p>
       )}
 
@@ -67,21 +61,64 @@ export function PatternObservationCard({ observation }: { observation: PatternOb
 
       {expanded && (
         <div className="mt-3 flex flex-col gap-3 border-t border-border pt-3">
-          {observation.evidenceText && (
-            <p className="text-xs leading-relaxed text-ink-soft">
-              근거: <span className="italic">{observation.evidenceText}</span>
-            </p>
-          )}
-          {excluded && (
-            <p className="rounded-xl bg-canvas px-3 py-2 text-xs leading-relaxed text-ink-faint">
-              이 관찰은 코칭에 사용하지 않기로 해서 관련 제안을 표시하지 않아요.
-            </p>
-          )}
-          <OpinionSection observation={observation} summary={summary} />
-          <CoachingOptOutControl observation={observation} />
+          <EvidenceQuotes observation={observation} />
+          <ObservationControls observation={observation} />
         </div>
       )}
     </section>
+  );
+}
+
+/** 근거가 된 대화 인용. `evidenceQuotes`(여러 장면)가 없으면 `evidenceText` 한 줄로 대체한다. */
+export function EvidenceQuotes({ observation }: { observation: PatternObservation }) {
+  const quotes =
+    observation.evidenceQuotes && observation.evidenceQuotes.length > 0
+      ? observation.evidenceQuotes
+      : observation.evidenceText
+        ? [observation.evidenceText]
+        : [];
+
+  if (quotes.length === 0) return null;
+
+  return (
+    <div className="text-xs leading-relaxed text-ink-soft">
+      <p className="eyebrow mb-1 text-ink-faint">근거가 된 대화</p>
+      <ul className="flex flex-col gap-1.5">
+        {quotes.map((quote) => (
+          <li key={quote} className="border-l-2 border-border pl-2 italic">
+            {quote}
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+/**
+ * 관찰에 대한 조작 영역 — 대표 발견(`HeadlineFinding`)과 보조 카드가 공유한다.
+ * **공개·적용 범위 안내를 조작 전에 먼저 보여준다**(0007 §5). 순서: 범위 안내 → (제외 안내) →
+ * 의견 → 코칭 제외 조작.
+ */
+export function ObservationControls({ observation }: { observation: PatternObservation }) {
+  const excluded = isExcludedFromCoaching(observation);
+  const summary = opinionSummary(observation);
+
+  return (
+    <div className="flex flex-col gap-3">
+      <p className="rounded-xl bg-canvas px-3 py-2 text-xs leading-relaxed text-ink-soft">
+        남긴 의견은 상대에게도 보여요. 코칭에서 제외하면 두 사람의 관련 코칭에 모두 적용돼요.
+      </p>
+
+      {excluded && (
+        <p className="rounded-xl bg-canvas px-3 py-2 text-xs leading-relaxed text-ink-faint">
+          이 관찰은 코칭에 사용하지 않기로 해서 관련 실천 제안을 표시하지 않아요. 관찰·근거·의견은
+          그대로 볼 수 있어요.
+        </p>
+      )}
+
+      <OpinionSection observation={observation} summary={summary} />
+      <CoachingOptOutControl observation={observation} />
+    </div>
   );
 }
 
@@ -231,8 +268,8 @@ function CoachingOptOutControl({ observation }: { observation: PatternObservatio
     <div className="border-t border-border pt-3">
       <p className="eyebrow mb-1 text-ink-faint">코칭 활용</p>
       <p className="text-xs leading-relaxed text-ink-faint">
-        코칭에서 제외하면 두 사람의 대화 코칭과 이 리포트의 관련 제안에 사용하지 않아요. 한 명이라도
-        제외하면 두 사람 모두에게 적용되고, 각자 자신의 제외만 해제할 수 있어요.
+        코칭에서 제외하면 두 사람의 대화 코칭과 이 리포트의 관련 실천 제안에 사용하지 않아요. 한
+        명이라도 제외하면 두 사람 모두에게 적용되고, 각자 자신의 제외만 해제할 수 있어요.
       </p>
 
       {partnerOptedOut && (

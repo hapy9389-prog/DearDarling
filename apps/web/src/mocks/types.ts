@@ -46,21 +46,38 @@ export interface CoachingSuggestion {
 }
 
 /**
- * 주간 리포트에서 관찰된 소통 패턴. 항상 "미확인 가설"로 다룬다 — 두 사람이 의견을 남겨도
- * 확정되지 않는다(docs/decisions/0004). 상대의 성향·감정을 단정하는 문구를 쓰지 않는다.
+ * 주간 리포트에서 관찰된 소통 패턴. 두 사람이 의견을 남겨도 확정된 사실로 바뀌지 않는다
+ * (docs/decisions/0004, 0007). 상대의 성향·감정을 단정하는 문구를 쓰지 않는다.
+ *
+ * title·interpretation·evidenceQuotes는 이번 주 대표 발견을 풍부하게 보여주기 위한 선택 필드다
+ * (0007). 예전에 저장된 관찰에는 없을 수 있으므로 화면에서 항상 기본값으로 방어한다.
  */
 export interface PatternObservation {
   id: string;
   coupleId: CoupleId;
   /** 이 관찰이 속한 주의 월요일('YYYY-MM-DD'). */
   weekOf: string;
-  /** 관찰 한 줄. 잠정 표현("~한 경향이 관찰됐어요 (아직 확인되지 않음)"). */
+  /** 관찰한 모습 한 줄. 확정된 사실처럼 들리지 않게 관찰형으로만 쓴다. */
   observation: string;
-  /** 근거가 된 대화를 사람이 읽을 수 있게 인용한 문장. */
+  /** 근거가 된 대화를 사람이 읽을 수 있게 인용한 문장(단수). evidenceQuotes가 없을 때의 대체값. */
   evidenceText: string;
   evidenceMessageIds: MessageId[];
   /** 도움이 될 제안(코칭 파생물). 코칭 활용 중단 시 화면에서 가린다. */
   suggestion: string;
+  /** 발견의 자연스러운 제목(대표 발견용, 선택). 없으면 화면이 일반 제목으로 대체한다. */
+  title?: string;
+  /**
+   * AI 해석 문단(대표 발견용, 선택, 최대 2문단). 관찰 사실(observation)과 분리해 "이렇게 이해해
+   * 볼 수도 있어요"로 보여준다. 실천 조언은 여기 넣지 않는다(코칭 제외 우회 금지, 0007).
+   */
+  interpretation?: string[];
+  /** 근거 인용을 여러 장면으로(대표 발견용, 선택). 없으면 [evidenceText]를 쓴다. */
+  evidenceQuotes?: string[];
+  /**
+   * 발견의 흐름을 설명하는 작은 도식의 단계 라벨(대표 발견용, 선택, 보통 3개).
+   * 라벨만 담는다 — 문장으로 다시 설명하지 않는다. 없으면 도식을 생략한다.
+   */
+  flow?: string[];
   /** AI 관찰을 덮어쓰지 않고 아래에 쌓이는, 각자가 남긴 의견. */
   opinions: PatternOpinion[];
   /** 코칭 활용 중단을 요청한 사람들. 한 명이라도 있으면 양측 코칭에서 제외된다. */
@@ -80,11 +97,16 @@ export interface PatternCoachingOptOut {
   createdAt: string;
 }
 
-/** 주간 리포트의 보조 통계(관찰이 주 콘텐츠, 통계는 보조). */
+/** 주간 리포트 상단의 핵심 통계(0007에서 상단으로 이동). 관계 점수·순위는 넣지 않는다. */
 export interface WeeklyReportStats {
   totalMessages: number;
-  /** 월~일 순서. */
+  /** 이번 주 대화가 오간 날 수. */
+  daysWithConversation: number;
+  /** 기준 일수(보통 7). "대화한 날 N일" 표시에 함께 쓴다. */
+  activeDaysTotal: number;
+  /** 월~일 순서. "대화가 많았던 요일"은 이 배열의 최댓값에서 파생한다. */
   byWeekday: { weekday: string; count: number }[];
+  /** 통계로 뒷받침되는 범위의 한두 줄. 시간대 등 근거 없는 단정은 쓰지 않는다. */
   highlights: string[];
 }
 
@@ -94,6 +116,11 @@ export interface WeeklyReport {
   /** 리포트가 도착한 시각(매주 월요일). */
   deliveredAt: string;
   stats: WeeklyReportStats;
+  /**
+   * 이번 주 대표 발견으로 삼을 관찰 id. 실제 분석에서 눈에 띄는 관찰이 없으면 null로 두고
+   * 억지로 만들지 않는다(0007) — 이때도 통계는 보인다.
+   */
+  headlineObservationId: string | null;
 }
 
 /** '우리' 탭의 개인 상담(개인 채널). 상대·공유 리포트에 자동 공개되지 않는다. */

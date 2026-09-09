@@ -50,3 +50,4 @@ docs             설계 문서, 의사결정 기록
 - [`docs/decisions/0004-pattern-observation-and-coaching-use.md`](./docs/decisions/0004-pattern-observation-and-coaching-use.md) — 소통 패턴 관찰·의견·코칭 활용 중단 모델('양측 맞아요 확인' 방식 대체)
 - [`docs/decisions/0005-future-requirements-and-follow-ups.md`](./docs/decisions/0005-future-requirements-and-follow-ups.md) — 후속 화면·기능(가입·로그인·연인 연결, 사진·영상 전송·AI 분석 등)과 보류 항목
 - [`docs/decisions/0006-us-tab-and-ai-consultation.md`](./docs/decisions/0006-us-tab-and-ai-consultation.md) — '우리' 탭(주간 리포트·패턴 관찰·의견·코칭 활용 중단)과 AI 개인 상담 진입점
+- [`docs/decisions/0007-us-tab-weekly-report-redesign.md`](./docs/decisions/0007-us-tab-weekly-report-redesign.md) — '우리' 탭을 통계 상단 + 이번 주 핵심 발견 하나 중심으로 개편(`미확인 가설` 칩 제거, 0006 §3 대체)
