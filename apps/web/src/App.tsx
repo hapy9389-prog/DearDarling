@@ -6,6 +6,7 @@ import { ActiveAccountProvider } from './state/ActiveAccountContext';
 import { ScenarioProvider } from './state/ScenarioContext';
 import { SettingsProvider } from './state/SettingsContext';
 import { PatternProvider } from './state/PatternContext';
+import { MemoriesProvider } from './state/MemoriesContext';
 
 export function App() {
   return (
@@ -14,10 +15,12 @@ export function App() {
         <ActiveAccountProvider>
           <SettingsProvider>
             <PatternProvider>
-              <ScreenContainer>
-                <AppShell />
-                <DevPanel />
-              </ScreenContainer>
+              <MemoriesProvider>
+                <ScreenContainer>
+                  <AppShell />
+                  <DevPanel />
+                </ScreenContainer>
+              </MemoriesProvider>
             </PatternProvider>
           </SettingsProvider>
         </ActiveAccountProvider>

@@ -147,3 +147,70 @@ export interface UserSettings {
 
 export type ChatDevScenario =
   'happy-path' | 'empty' | 'ai-warming-up' | 'ai-failure' | 'disconnected';
+
+/**
+ * 화면 검토용 예시 이미지(실제 업로드 사진이 아니다). 항상 '예시 이미지' 라벨과 함께 렌더한다 —
+ * 실제 사진 업로드·사진 내용 AI 분석·AI 이미지 생성은 후속 기능(docs/decisions/0008).
+ */
+export interface ExampleImageRef {
+  /** ExampleImage 컴포넌트가 그릴 결정적 일러스트 종류. 파일 경로가 아니다. */
+  variant: 'walk' | 'coffee' | 'night-talk' | 'sea' | 'home' | 'trip';
+  /** 스크린리더·캡션용 설명. */
+  alt: string;
+}
+
+/**
+ * 추억 — 대화에서 직접 골라 저장했거나, AI 발견 제안에서 '간직하기'로 저장한 커플 공유 항목
+ * (docs/decisions/0008). 저장 시점 스냅샷을 담아 원본 메시지가 없어져도 그대로 보인다.
+ */
+export interface Memory {
+  id: string;
+  coupleId: CoupleId;
+  /** 저장한 사람. 계정 전환과 무관하게 고정 — 메모 수정·삭제 권한 판단 기준. */
+  savedByUserId: UserId;
+  /** 저장 시각(ISO). 목록 정렬·'저장한 날짜' 구분선 기준. 메모를 수정해도 바뀌지 않는다. */
+  savedAt: string;
+  note?: string;
+  /** 메모를 마지막으로 고친 시각(있을 때만). */
+  noteUpdatedAt?: string;
+  /** 원본 메시지 id — 중복 저장 방지와 대화 화면 '추억에 저장됨' 표시에만 쓴다. */
+  sourceMessageId: MessageId;
+  /** AI 발견 제안에서 간직한 추억이면 true. */
+  fromSuggestion?: boolean;
+  /** 카드 레이아웃 힌트. 없으면 images 유무로 파생한다. */
+  layout?: 'photo' | 'conversation';
+  /** 관련 예시 이미지(선택). 직접 저장 흐름에서는 항상 비어 있다. */
+  images?: ExampleImageRef[];
+  // ── 저장 시점 스냅샷 ──
+  quoteBody: string;
+  quoteSenderId: UserId;
+  /** 원본 메시지의 createdAt — 카드에 '대화 날짜'로 보여준다. */
+  conversationAt: string;
+}
+
+/** AI가 발견한 순간(화면 검토용 시드 예시 — 실제 분석 결과가 아니다, docs/decisions/0008). */
+export interface MemorySuggestion {
+  id: string;
+  coupleId: CoupleId;
+  sourceMessageId: MessageId;
+  quoteBody: string;
+  quoteSenderId: UserId;
+  conversationAt: string;
+  /** 왜 이 순간을 골랐는지 — 사람이 읽는 한 줄. 관찰형으로만, 상대 감정을 단정하지 않는다. */
+  reason: string;
+  /** 관련 예시 이미지(선택). 사진 내용 분석이 아니라 그 순간에 어울리는 예시 일러스트. */
+  images?: ExampleImageRef[];
+}
+
+/**
+ * '그때의 우리' 리마인드 후보 1건. 앨범에 저장된 추억에서만 파생한다(삭제된 추억을 되살리지 않음).
+ * 정확히 마일스톤 날짜면 'exact'("100일 전 오늘"), 근사면 'approx'("약 100일 전").
+ */
+export interface RememberWhen {
+  memory: Memory;
+  match: 'exact' | 'approx';
+  /** 예: '100일 전 오늘' / '약 1년 전'. */
+  phrase: string;
+  /** 이 리마인드만 닫기 위한 키(memoryId + 마일스톤). 같은 추억의 다른 마일스톤은 계속 뜬다. */
+  dismissKey: string;
+}

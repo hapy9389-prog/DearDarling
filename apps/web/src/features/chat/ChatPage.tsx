@@ -3,6 +3,8 @@ import { useActiveAccount } from '../../state/ActiveAccountContext';
 import { useSettings } from '../../state/SettingsContext';
 import { useScenario } from '../../state/ScenarioContext';
 import { usePatterns } from '../../state/PatternContext';
+import { useMemories } from '../../state/MemoriesContext';
+import { useNavigation } from '../../state/NavigationContext';
 import { createMockChatService } from '../../mocks/services/chatService';
 import { createMockCoachingService } from '../../mocks/services/coachingService';
 import type { ChatMessage } from '../../mocks/types';
@@ -15,6 +17,7 @@ import { MessageList } from './MessageList';
 import { EmptyChatState } from './EmptyChatState';
 import { MessageInputBar } from './MessageInputBar';
 import { OverwriteDraftDialog } from './OverwriteDraftDialog';
+import { SaveMemorySheet } from './SaveMemorySheet';
 
 const coachingService = createMockCoachingService();
 
@@ -23,6 +26,8 @@ export function ChatPage() {
   const settings = useSettings();
   const { scenario } = useScenario();
   const { excludedPatternIds } = usePatterns();
+  const { memories, memoryForMessage, saveMemory } = useMemories();
+  const { navigate } = useNavigation();
 
   const chatService = useMemo(() => createMockChatService({ scenario }), [scenario]);
 
@@ -39,6 +44,16 @@ export function ChatPage() {
   const [coachingArea, setCoachingArea] = useState<CoachingAreaState>({ kind: 'loading' });
   const [draft, setDraft] = useState('');
   const [pendingSuggestion, setPendingSuggestion] = useState<string | null>(null);
+  const [memorySheet, setMemorySheet] = useState<{
+    messageId: string;
+    trigger: HTMLElement | null;
+  } | null>(null);
+  const [memoNote, setMemoNote] = useState('');
+
+  const savedMemoryMessageIds = useMemo(
+    () => memories.map((memory) => memory.sourceMessageId),
+    [memories],
+  );
 
   // 시나리오가 바뀌면 대화 목록을 다시 불러온다. 렌더 중에 바로 반영해(React가 권장하는
   // "prop이 바뀌면 상태를 조정하는" 패턴) 이펙트 안에서 동기적으로 setState하지 않도록 한다.
@@ -71,12 +86,15 @@ export function ChatPage() {
     latestReconcileTokenRef.current = reconcileToken;
   }, [reconcileToken]);
 
-  // 테스트 계정을 전환하면 아직 보내지 않은 초안·확인 대기 중인 추천은 새 계정으로 넘어가지 않는다.
+  // 테스트 계정을 전환하면 아직 보내지 않은 초안·확인 대기 중인 추천·작성 중인 추억 메모는
+  // 새 계정으로 넘어가지 않는다(저장하지 않고 비운다).
   const [draftForAccountId, setDraftForAccountId] = useState(account.id);
   if (draftForAccountId !== account.id) {
     setDraftForAccountId(account.id);
     setDraft('');
     setPendingSuggestion(null);
+    setMemorySheet(null);
+    setMemoNote('');
   }
 
   // 코칭 영역 상태 계산: 분석 동의/철회를 가장 먼저 확인한다 — 철회했다면 AI가 "준비 중"이든
@@ -189,6 +207,35 @@ export function ChatPage() {
     setDraft(text);
   }
 
+  function handleOpenMemoryMenu(messageId: string, trigger: HTMLElement) {
+    setMemoNote('');
+    setMemorySheet({ messageId, trigger });
+  }
+
+  function closeMemorySheet() {
+    setMemorySheet(null);
+    setMemoNote('');
+  }
+
+  const memorySheetMessage = memorySheet
+    ? messages.find((m) => m.id === memorySheet.messageId)
+    : undefined;
+
+  function handleSaveMemory() {
+    if (!memorySheetMessage) return;
+    saveMemory(
+      {
+        id: memorySheetMessage.id,
+        body: memorySheetMessage.body,
+        senderId: memorySheetMessage.senderId,
+        createdAt: memorySheetMessage.createdAt,
+        status: memorySheetMessage.status,
+      },
+      memoNote,
+    );
+    closeMemorySheet();
+  }
+
   // 전송 중·실패는 보낸 사람만 보는 로컬 상태다 — 상대방 시점에는 저장 완료된 메시지만 보인다.
   const visibleMessages = filterVisibleMessages(messages, account.id);
 
@@ -210,6 +257,8 @@ export function ChatPage() {
           myAccountId={account.id}
           highlightedMessageIds={highlightedIds}
           onRetry={handleRetry}
+          savedMemoryMessageIds={savedMemoryMessageIds}
+          onOpenMemoryMenu={handleOpenMemoryMenu}
         />
       )}
 
@@ -228,6 +277,22 @@ export function ChatPage() {
             setPendingSuggestion(null);
           }}
           onCancel={() => setPendingSuggestion(null)}
+        />
+      )}
+
+      {memorySheet && memorySheetMessage && (
+        <SaveMemorySheet
+          message={memorySheetMessage}
+          existingMemory={memoryForMessage(memorySheetMessage.id)}
+          note={memoNote}
+          onNoteChange={setMemoNote}
+          onSave={handleSaveMemory}
+          onViewMemory={(memoryId) => {
+            closeMemorySheet();
+            navigate('memories', { memoryId });
+          }}
+          onClose={closeMemorySheet}
+          returnFocusTo={memorySheet.trigger}
         />
       )}
     </div>

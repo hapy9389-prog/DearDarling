@@ -17,9 +17,16 @@ export const APP_TABS: { id: AppTab; label: string; icon: string }[] = [
   { id: 'memories', label: '추억', icon: '📷' },
 ];
 
+/** 화면 이동 시 함께 넘기는 가벼운 파라미터. 저장하지 않는다(새로고침하면 초기화). */
+export interface NavigateParams {
+  /** 추억 탭을 열 때 바로 펼칠 추억 id(홈의 '최근 추억' → 상세). */
+  memoryId?: string;
+}
+
 interface NavigationContextValue {
   screen: AppScreen;
-  navigate: (screen: AppScreen) => void;
+  params: NavigateParams;
+  navigate: (screen: AppScreen, params?: NavigateParams) => void;
 }
 
 const NavigationContext = createContext<NavigationContextValue | null>(null);
@@ -29,16 +36,19 @@ export function NavigationProvider({ children }: { children: ReactNode }) {
   const [screen, setScreenState] = useState<AppScreen>(() =>
     readJSON<AppScreen>(SCREEN_KEY, 'home'),
   );
+  const [params, setParams] = useState<NavigateParams>({});
 
   const value = useMemo<NavigationContextValue>(
     () => ({
       screen,
-      navigate: (next) => {
+      params,
+      navigate: (next, nextParams = {}) => {
         writeJSON(SCREEN_KEY, next);
         setScreenState(next);
+        setParams(nextParams);
       },
     }),
-    [screen],
+    [screen, params],
   );
 
   return <NavigationContext.Provider value={value}>{children}</NavigationContext.Provider>;

@@ -20,7 +20,7 @@ describe('4탭 내비게이션', () => {
     expect(screen.getByText('이번 주 눈에 띈 우리 모습')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '추억' }));
-    expect(screen.getByText('추억 화면 준비 중')).toBeInTheDocument();
+    expect(screen.getByText('우리 앨범')).toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '대화' }));
     expect(screen.getByLabelText('메시지 입력')).toBeVisible();

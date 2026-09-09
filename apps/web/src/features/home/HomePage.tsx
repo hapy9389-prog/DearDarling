@@ -3,14 +3,18 @@ import { useActiveAccount } from '../../state/ActiveAccountContext';
 import { useScenario } from '../../state/ScenarioContext';
 import { useSettings } from '../../state/SettingsContext';
 import { useNavigation } from '../../state/NavigationContext';
+import { useMemories } from '../../state/MemoriesContext';
 import { createMockRelationshipService } from '../../mocks/services/relationshipService';
 import { daysTogether } from '../../mocks/domain/relationship';
+import { getAccount } from '../../mocks/fixtures/accounts';
 
 export function HomePage() {
   const { account, partner } = useActiveAccount();
   const { scenario } = useScenario();
   const settings = useSettings();
   const { navigate } = useNavigation();
+  const { memories } = useMemories();
+  const recentMemories = memories.slice(0, 2);
 
   const relationship = useMemo(() => createMockRelationshipService(), []);
   const profile = relationship.getCoupleProfile(account.coupleId);
@@ -106,9 +110,32 @@ export function HomePage() {
               더 보기
             </button>
           </div>
-          <p className="text-sm leading-relaxed text-ink-soft">
-            아직 저장한 추억이 없어요. 대화에서 소중한 순간을 저장해 보세요.
-          </p>
+          {recentMemories.length === 0 ? (
+            <p className="text-sm leading-relaxed text-ink-soft">
+              아직 저장한 추억이 없어요. 대화에서 소중한 순간을 저장해 보세요.
+            </p>
+          ) : (
+            <ul className="flex flex-col gap-3">
+              {recentMemories.map((memory) => (
+                <li key={memory.id}>
+                  <button
+                    type="button"
+                    onClick={() => navigate('memories', { memoryId: memory.id })}
+                    className="block w-full text-left"
+                  >
+                    <p className="border-l-2 border-border pl-2 text-sm leading-relaxed text-ink-soft italic">
+                      {memory.quoteBody}
+                    </p>
+                    <p className="mt-1 text-[11px] text-ink-faint">
+                      {memory.note ? `${memory.note} · ` : ''}
+                      {getAccount(memory.quoteSenderId).nickname}의 말 ·{' '}
+                      {getAccount(memory.savedByUserId).nickname} 저장
+                    </p>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </section>
       </div>
     </div>

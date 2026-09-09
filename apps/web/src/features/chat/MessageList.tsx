@@ -7,11 +7,15 @@ export function MessageList({
   myAccountId,
   highlightedMessageIds,
   onRetry,
+  savedMemoryMessageIds,
+  onOpenMemoryMenu,
 }: {
   messages: ChatMessage[];
   myAccountId: string;
   highlightedMessageIds: string[];
   onRetry: (messageId: string) => void;
+  savedMemoryMessageIds: string[];
+  onOpenMemoryMenu: (messageId: string, trigger: HTMLElement) => void;
 }) {
   const bottomRef = useRef<HTMLDivElement | null>(null);
 
@@ -31,6 +35,8 @@ export function MessageList({
           isMine={message.senderId === myAccountId}
           isHighlighted={highlightedMessageIds.includes(message.id)}
           onRetry={message.status === 'failed' ? () => onRetry(message.id) : undefined}
+          savedAsMemory={savedMemoryMessageIds.includes(message.id)}
+          onOpenMemoryMenu={message.status === 'saved' ? onOpenMemoryMenu : undefined}
         />
       ))}
       <div ref={bottomRef} />

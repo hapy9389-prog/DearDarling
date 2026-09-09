@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useActiveAccount } from '../../state/ActiveAccountContext';
 import { SCENARIO_OPTIONS, useScenario } from '../../state/ScenarioContext';
 import { usePatterns } from '../../state/PatternContext';
+import { useMemories } from '../../state/MemoriesContext';
 import { resetAllMockData } from '../../mocks/storage';
 import { Avatar } from '../../shared/components/Avatar';
 
@@ -39,6 +40,8 @@ export function DevPanel() {
             <div className="my-4 h-px bg-border" />
             <WeeklyReportSection />
             <div className="my-4 h-px bg-border" />
+            <MemoriesSection />
+            <div className="my-4 h-px bg-border" />
             <ResetSection />
           </div>
         </div>
@@ -73,8 +76,68 @@ function AccountSwitcherSection() {
         ))}
       </div>
       <p className="mt-2 text-xs text-ink-soft">
-        전환하면 아직 보내지 않은 초안은 사라져요(다른 사람에게 섞이지 않도록 저장하지 않고
-        비웁니다). 이미 전송된 메시지, 코칭, 설정은 계정별로 분리되어 있어 그대로 유지돼요.
+        전환하면 아직 보내지 않은 초안과 작성 중인 추억 메모는 사라져요(다른 사람에게 섞이지 않도록
+        저장하지 않고 비웁니다). 이미 전송된 메시지, 코칭, 추억, 설정은 계정별로 분리되어 있어
+        그대로 유지돼요.
+      </p>
+    </section>
+  );
+}
+
+function MemoriesSection() {
+  const { suggestionsPresent, rememberWhenEnabled, setSuggestionsPresent, setRememberWhenEnabled } =
+    useMemories();
+
+  return (
+    <section>
+      <h2 className="eyebrow mb-2 text-ink-soft">추억 · 화면 검토</h2>
+
+      <p className="mb-1 text-xs font-medium text-ink-soft">AI가 발견한 순간</p>
+      <div className="flex gap-2">
+        {[
+          { present: true, label: '켬' },
+          { present: false, label: '끔' },
+        ].map((opt) => (
+          <button
+            key={opt.label}
+            type="button"
+            aria-label={`AI 발견 순간 ${opt.label}`}
+            onClick={() => setSuggestionsPresent(opt.present)}
+            className={`flex-1 rounded-xl border px-3 py-2 text-sm ${
+              opt.present === suggestionsPresent
+                ? 'border-coaching bg-coaching-soft text-coaching'
+                : 'border-border text-ink-soft'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+
+      <p className="mt-3 mb-1 text-xs font-medium text-ink-soft">그때의 우리 리마인드</p>
+      <div className="flex gap-2">
+        {[
+          { enabled: true, label: '켬' },
+          { enabled: false, label: '끔' },
+        ].map((opt) => (
+          <button
+            key={opt.label}
+            type="button"
+            aria-label={`그때의 우리 리마인드 ${opt.label}`}
+            onClick={() => setRememberWhenEnabled(opt.enabled)}
+            className={`flex-1 rounded-xl border px-3 py-2 text-sm ${
+              opt.enabled === rememberWhenEnabled
+                ? 'border-coaching bg-coaching-soft text-coaching'
+                : 'border-border text-ink-soft'
+            }`}
+          >
+            {opt.label}
+          </button>
+        ))}
+      </div>
+      <p className="mt-2 text-xs text-ink-soft">
+        ‘그때의 우리’를 켜면 앨범의 예시 사진 추억을 기준으로 “100일 전 오늘” 리마인드가 떠요. 그
+        추억을 삭제하면 켜도 뜨지 않아요. 실제 저장 날짜·목록 정렬에는 영향을 주지 않아요.
       </p>
     </section>
   );
@@ -143,7 +206,7 @@ function ResetSection() {
     <section>
       <h2 className="eyebrow mb-2 text-ink-soft">데이터 초기화</h2>
       <p className="mb-2 text-xs text-ink-soft">
-        두 계정의 메시지·코칭·설정을 모두 처음 시드 상태로 되돌려요. 실제 서버에는 아무 영향이
+        두 계정의 메시지·코칭·추억·설정을 모두 처음 시드 상태로 되돌려요. 실제 서버에는 아무 영향이
         없어요(브라우저에만 저장된 가상 데이터예요).
       </p>
       <button
