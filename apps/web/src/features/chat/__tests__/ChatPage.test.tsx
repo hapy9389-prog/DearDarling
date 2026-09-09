@@ -10,10 +10,32 @@ afterEach(() => {
 
 const SUGGESTION_TEXT = '혹시 무슨 일 있었어? 얘기하고 싶으면 들어줄게';
 
+/**
+ * 홈이 기본 진입 화면이 됐으므로(0003), 대화 화면을 검토하는 테스트는 먼저 '대화' 탭으로 이동한다.
+ */
+async function renderChatScreen() {
+  const user = userEvent.setup();
+  render(<App />);
+  await user.click(screen.getByRole('button', { name: '대화' }));
+  return user;
+}
+
+/**
+ * 대화 화면엔 설정 진입점이 없으므로(설정은 홈 상단 ⚙️): 홈 탭 → ⚙️ → 토글 → 대화 탭.
+ */
+async function toggleSettingThenGoChat(
+  user: ReturnType<typeof userEvent.setup>,
+  toggleLabel: RegExp,
+) {
+  await user.click(screen.getByRole('button', { name: '홈' }));
+  await user.click(screen.getByRole('button', { name: '설정' }));
+  await user.click(screen.getByLabelText(toggleLabel));
+  await user.click(screen.getByRole('button', { name: '대화' }));
+}
+
 describe('대화 화면 핵심 동작', () => {
   it('추천 답장은 초안에만 채워지고, 전송 버튼을 눌러야 실제로 전송된다', async () => {
-    const user = userEvent.setup();
-    render(<App />);
+    const user = await renderChatScreen();
 
     const chip = await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
     await user.click(chip);
@@ -41,26 +63,22 @@ describe('대화 화면 핵심 동작', () => {
   });
 
   it('분석 철회와 코칭 숨기기는 서로 다른 화면 상태를 보여준다', async () => {
-    const user = userEvent.setup();
-    render(<App />);
+    const user = await renderChatScreen();
 
     await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
 
-    await user.click(screen.getByRole('button', { name: /검토 도구/ }));
-
-    const consentToggle = screen.getByLabelText(/AI 분석 동의/);
-    await user.click(consentToggle); // 철회
-
+    // 설정 화면에서 AI 분석 동의 끄기(철회)
+    await toggleSettingThenGoChat(user, /AI 분석 동의/);
     expect(
       await screen.findByText('AI 분석에 동의하면 이 대화의 코칭을 받을 수 있어요.'),
     ).toBeInTheDocument();
 
-    await user.click(consentToggle); // 다시 동의(원상 복구)
+    // 다시 동의(원상 복구)
+    await toggleSettingThenGoChat(user, /AI 분석 동의/);
     await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
 
-    const visibilityToggle = screen.getByLabelText(/코칭 카드 표시/);
-    await user.click(visibilityToggle); // 코칭 카드만 숨김
-
+    // 코칭 카드 표시만 끄기 — 분석은 계속되고 코칭 카드만 숨겨진다
+    await toggleSettingThenGoChat(user, /코칭 카드 표시/);
     expect(
       await screen.findByText('코칭 카드를 숨겨두었어요. 분석은 계속되고 있어요.'),
     ).toBeInTheDocument();
@@ -71,16 +89,16 @@ describe('대화 화면 핵심 동작', () => {
   });
 
   it('AI 준비 중 시나리오여도 분석을 철회하면 분석 중단 안내가 먼저 보인다', async () => {
-    const user = userEvent.setup();
-    render(<App />);
+    const user = await renderChatScreen();
 
     await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
 
+    // 시나리오는 검토 도구로, 분석 철회는 설정 화면으로
     await user.click(screen.getByRole('button', { name: /검토 도구/ }));
     await user.click(screen.getByRole('button', { name: /AI 준비 중/ }));
+    await user.click(screen.getByRole('button', { name: '검토 도구 닫기' }));
 
-    const consentToggle = screen.getByLabelText(/AI 분석 동의/);
-    await user.click(consentToggle); // 철회
+    await toggleSettingThenGoChat(user, /AI 분석 동의/); // 철회
 
     // 분석 동의·철회가 AI 준비 상태보다 우선이어야 한다.
     expect(
@@ -92,8 +110,7 @@ describe('대화 화면 핵심 동작', () => {
   });
 
   it('전송 중이거나 실패한 메시지는 보낸 사람에게만 보이고, 상대방에게는 저장 완료된 메시지만 보인다', async () => {
-    const user = userEvent.setup();
-    render(<App />);
+    const user = await renderChatScreen();
 
     await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
 
@@ -125,8 +142,7 @@ describe('대화 화면 핵심 동작', () => {
   });
 
   it('입력창에서 Enter를 눌러도 메시지가 전송되지 않는다', async () => {
-    const user = userEvent.setup();
-    render(<App />);
+    const user = await renderChatScreen();
 
     const input = screen.getByLabelText('메시지 입력') as HTMLInputElement;
     await user.type(input, '안녕하세요');
@@ -139,7 +155,7 @@ describe('대화 화면 핵심 동작', () => {
   });
 
   it('한글 조합을 Enter로 확정해도 메시지가 전송되지 않는다', async () => {
-    render(<App />);
+    await renderChatScreen();
 
     const input = screen.getByLabelText('메시지 입력') as HTMLInputElement;
 
@@ -154,8 +170,7 @@ describe('대화 화면 핵심 동작', () => {
   });
 
   it('연결 끊김에서 실패한 메시지를 정상으로 돌아와 재전송하면 성공한다 — 같은 대화가 유지된다', async () => {
-    const user = userEvent.setup();
-    render(<App />);
+    const user = await renderChatScreen();
 
     await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
 
@@ -202,8 +217,7 @@ describe('대화 화면 핵심 동작', () => {
   });
 
   it('전송 중 시나리오를 바꾸면 이전 요청의 완료 결과가 새 화면에 섞이지 않는다', async () => {
-    const user = userEvent.setup();
-    render(<App />);
+    const user = await renderChatScreen();
 
     await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
 
@@ -228,8 +242,7 @@ describe('대화 화면 핵심 동작', () => {
   });
 
   it('같은 대화 안에서 상태를 바꿔도(정상 → AI 준비 중) 전송의 최종 상태가 표시된다', async () => {
-    const user = userEvent.setup();
-    render(<App />);
+    const user = await renderChatScreen();
 
     await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
 
@@ -243,7 +256,9 @@ describe('대화 화면 핵심 동작', () => {
     await user.click(screen.getByRole('button', { name: '검토 도구 닫기' }));
 
     function findMyMessageRow() {
-      const bubble = within(screen.getByTestId('message-list')).getByText('상태 바꿔도 완료되는 메시지');
+      const bubble = within(screen.getByTestId('message-list')).getByText(
+        '상태 바꿔도 완료되는 메시지',
+      );
       const row = bubble.parentElement;
       if (!row) throw new Error('메시지 행을 찾을 수 없습니다.');
       return row;
@@ -260,8 +275,7 @@ describe('대화 화면 핵심 동작', () => {
   });
 
   it('같은 대화 안에서 상태를 바꿔도 재시도의 최종 상태가 표시된다', async () => {
-    const user = userEvent.setup();
-    render(<App />);
+    const user = await renderChatScreen();
 
     await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
 
@@ -275,7 +289,9 @@ describe('대화 화면 핵심 동작', () => {
     await user.click(screen.getByRole('button', { name: '전송' }));
 
     function findMyMessageRow() {
-      const bubble = within(screen.getByTestId('message-list')).getByText('재시도 후 상태 전환 메시지');
+      const bubble = within(screen.getByTestId('message-list')).getByText(
+        '재시도 후 상태 전환 메시지',
+      );
       const row = bubble.parentElement;
       if (!row) throw new Error('메시지 행을 찾을 수 없습니다.');
       return row;
@@ -309,8 +325,7 @@ describe('대화 화면 핵심 동작', () => {
   });
 
   it('빈 대화를 나갔다 다시 들어오면 이전 방문의 늦은 전송 결과가 섞이지 않는다', async () => {
-    const user = userEvent.setup();
-    render(<App />);
+    const user = await renderChatScreen();
 
     await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
 
@@ -343,5 +358,85 @@ describe('대화 화면 핵심 동작', () => {
     });
     expect(screen.queryByText('첫 방문에서 보낸 메시지')).not.toBeInTheDocument();
     expect(screen.getByText('아직 나눈 대화가 없어요')).toBeInTheDocument();
+  });
+
+  it('전송 중 다른 탭에 갔다 와도 완료된 메시지 상태가 반영된다', async () => {
+    const user = await renderChatScreen();
+
+    await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
+
+    const input = screen.getByLabelText('메시지 입력') as HTMLInputElement;
+    await user.type(input, '탭 이동 중에도 완료되는 메시지');
+    await user.click(screen.getByRole('button', { name: '전송' })); // 700ms 후 저장 완료
+
+    // 정착 전에 홈 탭으로 이동 — 대화 화면은 숨겨질 뿐 언마운트되지 않는다.
+    await user.click(screen.getByRole('button', { name: '홈' }));
+    expect(screen.getByText(/함께한 지 [\d,]+일/)).toBeInTheDocument();
+    // 숨겨진 대화 목록은 현재(홈) 탭에 보이지 않는다.
+    expect(screen.getByTestId('message-list')).not.toBeVisible();
+
+    // 대화 탭으로 복귀하면, 그 사이 완료된 전송의 최종 상태가 그대로 반영되어야 한다.
+    await user.click(screen.getByRole('button', { name: '대화' }));
+
+    function findMyMessageRow() {
+      const bubble = within(screen.getByTestId('message-list')).getByText(
+        '탭 이동 중에도 완료되는 메시지',
+      );
+      const row = bubble.parentElement;
+      if (!row) throw new Error('메시지 행을 찾을 수 없습니다.');
+      return row;
+    }
+
+    await waitFor(
+      () => {
+        expect(within(findMyMessageRow()).getByText('저장 완료')).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+  });
+
+  it('재시도 중 다른 탭에 갔다 와도 완료된 메시지 상태가 반영된다', async () => {
+    const user = await renderChatScreen();
+
+    await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 });
+
+    // 연결 끊김으로 전환해 메시지를 '전송 실패'로 만든다.
+    await user.click(screen.getByRole('button', { name: /검토 도구/ }));
+    await user.click(screen.getByRole('button', { name: /^연결 끊김/ }));
+    await user.click(screen.getByRole('button', { name: '검토 도구 닫기' }));
+
+    const input = screen.getByLabelText('메시지 입력') as HTMLInputElement;
+    await user.type(input, '재시도 탭 이동 메시지');
+    await user.click(screen.getByRole('button', { name: '전송' }));
+
+    function findMyMessageRow() {
+      const bubble = within(screen.getByTestId('message-list')).getByText('재시도 탭 이동 메시지');
+      const row = bubble.parentElement;
+      if (!row) throw new Error('메시지 행을 찾을 수 없습니다.');
+      return row;
+    }
+
+    await waitFor(
+      () => {
+        expect(within(findMyMessageRow()).getByText('전송 실패')).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
+
+    // '정상'으로 돌아와 재시도를 시작하고, 정착 전에 추억 탭으로 이동했다가 대화로 복귀한다.
+    await user.click(screen.getByRole('button', { name: /검토 도구/ }));
+    await user.click(screen.getByRole('button', { name: /^정상/ }));
+    await user.click(screen.getByRole('button', { name: '검토 도구 닫기' }));
+
+    await user.click(within(findMyMessageRow()).getByRole('button', { name: '다시 보내기' }));
+    await user.click(screen.getByRole('button', { name: '추억' }));
+    await user.click(screen.getByRole('button', { name: '대화' }));
+
+    await waitFor(
+      () => {
+        expect(within(findMyMessageRow()).getByText('저장 완료')).toBeInTheDocument();
+      },
+      { timeout: 2000 },
+    );
   });
 });

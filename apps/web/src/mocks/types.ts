@@ -11,6 +11,12 @@ export interface TestAccount {
   avatarEmoji: string;
 }
 
+export interface CoupleProfile {
+  coupleId: CoupleId;
+  /** 사귀기 시작한 날('YYYY-MM-DD'). 홈의 "함께한 날짜(D+N)" 계산 기준. 만난 첫날이 1일. */
+  relationshipStartDate: string;
+}
+
 export type MessageStatus = 'sending' | 'saved' | 'failed';
 
 export interface ChatMessage {

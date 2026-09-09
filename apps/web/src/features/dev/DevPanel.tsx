@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { useActiveAccount } from '../../state/ActiveAccountContext';
-import { useSettings } from '../../state/SettingsContext';
 import { SCENARIO_OPTIONS, useScenario } from '../../state/ScenarioContext';
 import { resetAllMockData } from '../../mocks/storage';
 import { Avatar } from '../../shared/components/Avatar';
 
 /**
- * 화면 검토용 도구 모음. 실제 제품 화면이 아니라 리뷰어가 계정/설정/시나리오를 빠르게 바꿔보기 위한 것.
- * "설정" 화면(2단계 이후)이 생기기 전까지, 분석 동의·코칭 숨기기를 미리 검토할 수 있게 여기 임시로 둔다.
+ * 화면 검토용 도구 모음. 실제 제품 화면이 아니라 리뷰어가 계정/시나리오를 빠르게 바꿔보기 위한 것.
+ * AI 분석 동의·코칭 카드 표시 설정은 정식 설정 화면(홈 상단 ⚙️ → 설정)으로 옮겼다.
+ * 여기는 계정 전환·화면 상태 시나리오·가상 데이터 초기화만 담당한다.
  */
 export function DevPanel() {
   const [open, setOpen] = useState(false);
@@ -33,8 +33,6 @@ export function DevPanel() {
           <div className="relative max-h-[80%] overflow-y-auto rounded-t-2xl bg-canvas-raised p-5 shadow-2xl">
             <div className="mx-auto mb-4 h-1 w-10 rounded-full bg-border-strong" />
             <AccountSwitcherSection />
-            <div className="my-4 h-px bg-border" />
-            <SettingsPreviewSection />
             <div className="my-4 h-px bg-border" />
             <ScenarioSection />
             <div className="my-4 h-px bg-border" />
@@ -76,61 +74,6 @@ function AccountSwitcherSection() {
         비웁니다). 이미 전송된 메시지, 코칭, 설정은 계정별로 분리되어 있어 그대로 유지돼요.
       </p>
     </section>
-  );
-}
-
-function SettingsPreviewSection() {
-  const { account } = useActiveAccount();
-  const { mine, updateMine } = useSettings();
-
-  return (
-    <section>
-      <h2 className="eyebrow mb-2 text-ink-soft">임시 설정 미리보기 — {account.nickname}</h2>
-      <p className="mb-3 text-xs text-ink-soft">
-        실제 설정 화면은 다음 단계에서 만들어요. 지금은 두 동작의 차이를 검토할 수 있도록 여기 미리
-        토글을 둡니다.
-      </p>
-
-      <ToggleRow
-        label="AI 분석 동의"
-        description="끄면 커플 분석 전체가 멈추고, 코칭·이후 패턴 활용에 쓰이지 않아요. (분석 철회)"
-        checked={mine.analysisConsent}
-        onChange={(checked) => updateMine({ analysisConsent: checked })}
-      />
-      <ToggleRow
-        label="코칭 카드 표시"
-        description="꺼도 분석은 계속돼요. 내 화면에서만 코칭 카드를 숨기는 표시 설정이에요. (코칭 숨기기)"
-        checked={mine.coachingVisible}
-        onChange={(checked) => updateMine({ coachingVisible: checked })}
-      />
-    </section>
-  );
-}
-
-function ToggleRow({
-  label,
-  description,
-  checked,
-  onChange,
-}: {
-  label: string;
-  description: string;
-  checked: boolean;
-  onChange: (checked: boolean) => void;
-}) {
-  return (
-    <label className="mb-3 flex items-start gap-3 rounded-xl border border-border p-3 last:mb-0">
-      <input
-        type="checkbox"
-        checked={checked}
-        onChange={(e) => onChange(e.target.checked)}
-        className="mt-0.5 h-4 w-4 accent-accent"
-      />
-      <span>
-        <span className="block text-sm font-medium">{label}</span>
-        <span className="block text-xs text-ink-soft">{description}</span>
-      </span>
-    </label>
   );
 }
 
