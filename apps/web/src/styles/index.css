@@ -1,0 +1,71 @@
+@import 'tailwindcss';
+
+/*
+ * DearDarling 디자인 토큰 — "가까운 두 사람 사이에 오가는 편지"라는 톤을 기준으로 삼는다.
+ * - 캔버스/버블: 따뜻한 아이보리-블러시 톤. 내 메시지는 잉크-플럼(짙은 자주), 상대 메시지는 더스티 블러시.
+ * - AI 코칭 카드만 별도의 바이올렛 톤을 써서 "다른 목소리"라는 것을 색으로 구분한다.
+ * - 세리프(Gowun Batang)는 앱 워드마크와 코칭 카드의 인사이트 문장에만 절제해서 쓴다.
+ */
+@theme {
+  --font-display: 'Gowun Batang', ui-serif, serif;
+  --font-sans:
+    -apple-system, 'Apple SD Gothic Neo', 'Pretendard', 'Malgun Gothic', system-ui, sans-serif;
+
+  --color-canvas: #fcf6f1;
+  --color-canvas-raised: #ffffff;
+
+  --color-ink: #2b2130;
+  --color-ink-soft: #6b5f70;
+  --color-ink-faint: #9c8fa0;
+
+  --color-border: #e7dcd3;
+  --color-border-strong: #d9c9ba;
+
+  --color-partner-bubble: #f3e1da;
+  --color-partner-bubble-text: #2b2130;
+
+  --color-mine-bubble: #2b2130;
+  --color-mine-bubble-text: #fbf4ee;
+
+  --color-accent: #b5566f;
+  --color-accent-hover: #9c435c;
+  --color-accent-soft: #f3dce2;
+
+  --color-coaching: #4b3b6b;
+  --color-coaching-soft: #f1edf7;
+  --color-coaching-border: #d9cfe9;
+
+  --color-success: #5c7a5f;
+  --color-success-soft: #e6ede6;
+  --color-pending: #c08a3e;
+  --color-pending-soft: #f4e9d6;
+  --color-danger: #a9463f;
+  --color-danger-soft: #f5e0de;
+}
+
+@layer base {
+  html {
+    color-scheme: light;
+  }
+
+  body {
+    background: var(--color-canvas);
+    color: var(--color-ink);
+    font-family: var(--font-sans);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
+}
+
+@layer utilities {
+  .eyebrow {
+    font-size: 0.6875rem;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+}
