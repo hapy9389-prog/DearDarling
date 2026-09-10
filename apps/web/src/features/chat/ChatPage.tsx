@@ -24,7 +24,7 @@ import { applyDraftHelp, matchDraftHelp } from '../../mocks/domain/draftHelp';
 const coachingService = createMockCoachingService();
 
 export function ChatPage() {
-  const { account, partner } = useActiveAccount();
+  const { account, partner, mode } = useActiveAccount();
   const settings = useSettings();
   const { scenario } = useScenario();
   const { excludedPatternIds } = usePatterns();
@@ -67,6 +67,16 @@ export function ChatPage() {
     setHighlightedIds([]);
   }
 
+  // 커플(또는 모드)이 바뀌면 이전 커플의 대화가 화면에 남지 않도록 목록을 새로 불러온다.
+  // 체험 커플 ↔ 민준·서연 검토 모드, 다른 체험 커플로 전환 등. 같은 커플 안에서의 시점 전환
+  // (민준↔서연, 체험 A↔B)은 coupleId가 그대로라 목록을 유지한다.
+  const [loadedCoupleId, setLoadedCoupleId] = useState(account.coupleId);
+  if (loadedCoupleId !== account.coupleId) {
+    setLoadedCoupleId(account.coupleId);
+    setMessages(chatService.listMessages(account.coupleId));
+    setHighlightedIds([]);
+  }
+
   // '빈 대화'는 들어올 때마다 새로운 "방문"이다 — 나갔다 다시 들어오면 이전 방문에서 진행 중이던
   // 전송의 늦은 결과가 이번 빈 화면에 섞이면 안 된다. 대화(conversationId)가 바뀔 때마다 방문
   // 번호를 올려, "이 전송을 시작한 방문"과 "지금 방문"을 구분한다.
@@ -83,7 +93,9 @@ export function ChatPage() {
   // - '빈 대화'는 저장이 없으므로 방문이 다르면(나갔다 다시 들어오면) 이전 방문 결과를 버린다.
   // 전송·재시도는 700ms 뒤에 끝나므로, 이펙트에서 한 박자 늦게 갱신해도 그보다 훨씬 먼저
   // 최신값이 반영되어 문제없다(렌더 중 ref를 직접 읽고 쓰는 것은 React 규칙상 피한다).
-  const reconcileToken = conversationId === 'empty' ? `empty#${visit}` : 'main';
+  // 커플이 바뀌면 이전 커플에서 시작한 전송의 늦은 결과가 새 화면에 반영되지 않아야 한다.
+  const reconcileToken =
+    conversationId === 'empty' ? `empty#${account.coupleId}#${visit}` : `main#${account.coupleId}`;
   const latestReconcileTokenRef = useRef(reconcileToken);
   useEffect(() => {
     latestReconcileTokenRef.current = reconcileToken;
@@ -113,6 +125,11 @@ export function ChatPage() {
     let cancelled = false;
 
     async function load() {
+      // 신규 체험 모드: 동의 여부와 무관하게 AI 코칭을 제공하지 않는다(0010).
+      if (mode === 'trial') {
+        setCoachingArea({ kind: 'trial-unavailable' });
+        return;
+      }
       if (!settings.coupleAnalysisActive) {
         setCoachingArea({
           kind: 'consent-pending',
@@ -152,6 +169,7 @@ export function ChatPage() {
       cancelled = true;
     };
   }, [
+    mode,
     scenario,
     settings.coupleAnalysisActive,
     settings.mine.coachingVisible,

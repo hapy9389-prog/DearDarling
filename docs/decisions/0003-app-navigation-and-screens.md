@@ -20,10 +20,16 @@
 | '우리' 탭(주간 리포트·패턴 관찰·AI 개인 상담)                     | 구현 완료 (0006) — 라벨을 '이번 주 우리'→'우리'로 변경  |
 | 추억 화면 · 대화→추억 저장 흐름 · AI 발견 · 그때의 우리           | 구현 완료 (0008) — 가상 데이터·예시 이미지              |
 | 채팅 사진·영상 첨부 구조                                          | 구현 예정 (Phase C, 0005)                               |
+| 시작·가입·로그인·프로필·연인 연결·AI 분석 동의 진입 흐름          | 구현 완료 (0010) — react-router 도입, 가상 데이터       |
 
 ## 결정
 
-### 1. react-router를 아직 도입하지 않는다
+### 1. react-router를 아직 도입하지 않는다 (→ 0010에서 도입)
+
+> **0010에서 갱신됨.** 가입·로그인·연인 연결 화면이 생기면서 react-router를 도입했고,
+> `NavigationContext`는 URL(`/app/<screen>`) 위에서 동작하는 얇은 어댑터로 재구현했다.
+> 공개 API(`screen`·`params`·`navigate`·`APP_TABS`)와 `BottomNav`·탭 화면은 그대로다.
+> 아래는 그 전의 결정 기록이다.
 
 0001의 결정을 유지한다. 화면 전환은 `apps/web/src/state/NavigationContext.tsx`가 담당한다 —
 단일 `screen` 상태(`home | chat | week | memories | settings | ask`)와 `navigate(screen)`,

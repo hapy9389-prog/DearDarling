@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { render, screen, within } from '@testing-library/react';
+import { screen, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from '../../../App';
+import { renderApp } from '../../../test/renderApp';
+import { seedReviewSession } from '../../../test/seed';
 import { resetAllMockData } from '../../../mocks/storage';
 
 afterEach(() => {
@@ -12,7 +13,7 @@ type User = ReturnType<typeof userEvent.setup>;
 
 async function openWeek(): Promise<User> {
   const user = userEvent.setup();
-  render(<App />);
+  renderApp({ session: seedReviewSession() });
   await user.click(screen.getByRole('button', { name: '우리' }));
   return user;
 }

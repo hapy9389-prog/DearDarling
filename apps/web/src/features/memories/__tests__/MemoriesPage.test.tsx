@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from '../../../App';
+import { renderApp as renderAppRoot } from '../../../test/renderApp';
+import { seedReviewSession } from '../../../test/seed';
 import { coupleKey, resetAllMockData, writeJSON } from '../../../mocks/storage';
 
 afterEach(() => {
@@ -12,7 +13,7 @@ type User = ReturnType<typeof userEvent.setup>;
 
 function renderApp(): User {
   const user = userEvent.setup();
-  render(<App />);
+  renderAppRoot({ session: seedReviewSession() });
   return user;
 }
 
@@ -372,12 +373,12 @@ describe('추억 — 앨범과 공유 범위', () => {
 
   it('새로고침 후에도 유지되고 홈의 최근 추억에서 상세로 갈 수 있다', async () => {
     const first = userEvent.setup();
-    const view = render(<App />);
+    const view = renderAppRoot({ session: seedReviewSession() });
     await saveFromChat(first, SEED_MSG_3, '남겨두고 싶은 말');
     view.unmount();
 
     const user = userEvent.setup();
-    render(<App />);
+    renderAppRoot({ session: seedReviewSession() });
     await goTab(user, '홈');
     expect(screen.getByText(/남겨두고 싶은 말/)).toBeInTheDocument();
     await user.click(screen.getByRole('button', { name: /남겨두고 싶은 말/ }));

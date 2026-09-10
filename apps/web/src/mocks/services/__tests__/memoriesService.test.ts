@@ -280,3 +280,12 @@ describe('memoriesService — 예시 추억 채우기 (검토 도구)', () => {
     expect(forMessage[0]!.savedByUserId).toBe(SEOYEON);
   });
 });
+
+describe('memoriesService — 신규 체험 커플은 빈 앨범으로 시작한다', () => {
+  it('예시 추억·발견을 돌려주지 않는다', () => {
+    expect(service.listMemories('trial-couple-1')).toEqual([]);
+    expect(service.listSuggestions('trial-couple-1', 'trial-user-a')).toEqual([]);
+    // 검토 커플은 그대로 예시 추억이 있다.
+    expect(service.listMemories(COUPLE_ID).length).toBeGreaterThan(0);
+  });
+});

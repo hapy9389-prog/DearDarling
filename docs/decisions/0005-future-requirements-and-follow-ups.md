@@ -7,10 +7,10 @@
 
 ## 후속 화면·연결 (예정, 범위 밖)
 
-- **가입 / 로그인 / 연인 연결 화면.** 여러 화면 사이를 실제로 이동하고 브라우저 히스토리·딥링크가
-  필요해지는 시점이다. 이때 **react-router를 도입**하고(0001·0003 참조) 현재 상태 기반
-  `NavigationContext`를 재검토한다.
+- ~~**가입 / 로그인 / 연인 연결 화면.**~~ **0010에서 가상 데이터로 구현·검토 완료** — react-router
+  도입, `NavigationContext`를 라우터 어댑터로 재구현, 세션 모델·연인 연결 mock·체험 모드 격리.
 - 실제 인증·DB·AI·AWS 연결 (`apps/api`, `apps/worker`, `packages/contracts`, `packages/domain`, `infra`).
+  0010의 mock seam(authService·inviteService·시드 폴백 게이팅 등)을 실제 구현으로 교체한다.
 
 ## 채팅 사진·영상 (구조만 준비, 기능 예정)
 

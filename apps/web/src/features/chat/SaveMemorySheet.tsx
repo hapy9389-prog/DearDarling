@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import type { ChatMessage, Memory } from '../../mocks/types';
-import { getAccount } from '../../mocks/fixtures/accounts';
+import { useActiveAccount } from '../../state/ActiveAccountContext';
 import { Avatar } from '../../shared/components/Avatar';
 import { conversationDateLabel } from '../../mocks/domain/memories';
 
@@ -28,6 +28,7 @@ export function SaveMemorySheet({
   onClose: () => void;
   returnFocusTo: HTMLElement | null;
 }) {
+  const { lookupMember } = useActiveAccount();
   const [step, setStep] = useState<'menu' | 'preview'>('menu');
   const panelRef = useRef<HTMLDivElement>(null);
 
@@ -63,7 +64,7 @@ export function SaveMemorySheet({
     }
   }
 
-  const sender = getAccount(message.senderId);
+  const sender = lookupMember(message.senderId);
 
   return (
     <div className="absolute inset-0 z-30 flex flex-col justify-end" onKeyDown={handleKeyDown}>

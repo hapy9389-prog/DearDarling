@@ -1,30 +1,14 @@
-import { ScreenContainer } from './shared/components/ScreenContainer';
-import { AppShell } from './app-shell/AppShell';
-import { DevPanel } from './features/dev/DevPanel';
-import { NavigationProvider } from './state/NavigationContext';
-import { ActiveAccountProvider } from './state/ActiveAccountContext';
-import { ScenarioProvider } from './state/ScenarioContext';
-import { SettingsProvider } from './state/SettingsContext';
-import { PatternProvider } from './state/PatternContext';
-import { MemoriesProvider } from './state/MemoriesContext';
+import { BrowserRouter } from 'react-router';
+import { AppRouter } from './app-router/AppRouter';
 
+/**
+ * 화면 전환에 react-router를 쓴다(0010, 0003 §1의 "그때 도입한다"). 라우트 정의는 `AppRouter`에
+ * 있고, 여기서는 `<BrowserRouter>`만 씌운다 — 테스트는 `<MemoryRouter>` + `<AppRouter />`를 쓴다.
+ */
 export function App() {
   return (
-    <NavigationProvider>
-      <ScenarioProvider>
-        <ActiveAccountProvider>
-          <SettingsProvider>
-            <PatternProvider>
-              <MemoriesProvider>
-                <ScreenContainer>
-                  <AppShell />
-                  <DevPanel />
-                </ScreenContainer>
-              </MemoriesProvider>
-            </PatternProvider>
-          </SettingsProvider>
-        </ActiveAccountProvider>
-      </ScenarioProvider>
-    </NavigationProvider>
+    <BrowserRouter>
+      <AppRouter />
+    </BrowserRouter>
   );
 }

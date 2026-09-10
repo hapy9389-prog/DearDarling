@@ -22,3 +22,22 @@ describe('settingsService — 계정별 데이터 분리', () => {
     expect(seoyeon.coachingVisible).toBe(true);
   });
 });
+
+describe('settingsService — 신규 체험 vs 검토 계정 기본값', () => {
+  it('신규 체험 사용자는 AI 분석 동의가 기본 꺼짐이다', () => {
+    const service = createMockSettingsService();
+    expect(service.getSettings('trial-user-abc').analysisConsent).toBe(false);
+  });
+
+  it('검토 계정(민준·서연)은 기본 켜짐을 유지한다', () => {
+    const service = createMockSettingsService();
+    expect(service.getSettings('user-minjun').analysisConsent).toBe(true);
+    expect(service.getSettings('user-seoyeon').analysisConsent).toBe(true);
+  });
+
+  it('이미 저장된 설정 행은 기본값 분기와 무관하게 그대로 읽힌다', () => {
+    const service = createMockSettingsService();
+    service.updateSettings('trial-user-abc', { analysisConsent: true });
+    expect(service.getSettings('trial-user-abc').analysisConsent).toBe(true);
+  });
+});

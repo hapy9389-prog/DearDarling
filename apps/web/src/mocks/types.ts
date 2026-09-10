@@ -11,10 +11,45 @@ export interface TestAccount {
   avatarEmoji: string;
 }
 
+/**
+ * 신규 체험 사용자(0010). 가입 시 만들어지고, 프로필·연결 단계에서 채워진다.
+ * 비밀번호는 절대 담지 않는다 — 실제 인증이 붙으면 서버가 자격 증명을 관리한다.
+ */
+export interface TrialUser {
+  id: UserId;
+  /** 정규화된(소문자·trim) 이메일. 고유. */
+  email: string;
+  /** 닉네임. 프로필 단계 전에는 ''(빈 문자열) — 이때 프로필 미완료로 본다. */
+  nickname: string;
+  avatarEmoji: string;
+  /** 연결 전 null. `acceptInvite` 시 생성된 trial-couple id. */
+  coupleId: CoupleId | null;
+  partnerUserId: UserId | null;
+  createdAt: string;
+}
+
+export type InviteStatus = 'pending' | 'accepted' | 'revoked';
+
+/** 연인 연결 초대(0010). 가상 처리라 서버 발급 토큰 대신 로컬에 보관한다. */
+export interface Invite {
+  code: string;
+  inviterUserId: UserId;
+  createdAt: string;
+  /** 만료 시각(ISO). */
+  expiresAt: string;
+  status: InviteStatus;
+  accepterUserId: UserId | null;
+}
+
 export interface CoupleProfile {
   coupleId: CoupleId;
-  /** 사귀기 시작한 날('YYYY-MM-DD'). 홈의 "함께한 날짜(D+N)" 계산 기준. 만난 첫날이 1일. */
-  relationshipStartDate: string;
+  /** 두 사람이 연결된 시각(ISO). 항상 존재한다. 연애 시작일과는 별개다. */
+  connectedAt: string;
+  /**
+   * 사귀기 시작한 날('YYYY-MM-DD'). 홈의 "함께한 날짜(D+N)" 계산 기준(만난 첫날이 1일).
+   * 선택 입력이라 아직 정하지 않았으면 null — 이때 홈은 연결일 기준 안내를 보여준다(0010).
+   */
+  relationshipStartDate: string | null;
 }
 
 export type MessageStatus = 'sending' | 'saved' | 'failed';

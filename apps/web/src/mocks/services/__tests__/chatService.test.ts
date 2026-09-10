@@ -49,3 +49,27 @@ describe('chatService — 시나리오별 저장 공간 분리', () => {
     ).toBe(true);
   });
 });
+
+describe('chatService — 신규 체험 커플은 빈 대화로 시작한다', () => {
+  it('시드 메시지를 돌려주지 않는다', () => {
+    const service = createMockChatService({ scenario: 'happy-path' });
+    expect(service.listMessages('trial-couple-1')).toEqual([]);
+    // 검토 커플은 그대로 시드 대화가 있다.
+    expect(service.listMessages(COUPLE_ID).length).toBeGreaterThan(0);
+  });
+
+  it('체험 커플에서 보낸 메시지는 그 커플 저장소에만 저장된다', async () => {
+    const service = createMockChatService({ scenario: 'happy-path' });
+    await service.sendMessage(
+      {
+        coupleId: 'trial-couple-1',
+        senderId: 'trial-user-a',
+        body: '첫 인사',
+        clientMessageId: 't1',
+      },
+      { onPending: () => {} },
+    );
+    expect(service.listMessages('trial-couple-1').map((m) => m.body)).toEqual(['첫 인사']);
+    expect(service.listMessages('trial-couple-2')).toEqual([]);
+  });
+});

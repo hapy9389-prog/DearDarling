@@ -1,9 +1,10 @@
-import { useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useActiveAccount } from '../../state/ActiveAccountContext';
 import { useNavigation } from '../../state/NavigationContext';
 import { useScenario } from '../../state/ScenarioContext';
 import { useSettings } from '../../state/SettingsContext';
 import { usePatterns } from '../../state/PatternContext';
+import { createMockPatternService } from '../../mocks/services/patternService';
 import { StateCard } from '../../shared/components/StateCard';
 import type { PatternObservation, WeeklyReportStats } from '../../mocks/types';
 import { HeadlineFinding } from './HeadlineFinding';
@@ -31,27 +32,40 @@ const NOT_ENOUGH_CONVERSATION_SCENARIO = 'empty';
  */
 export function WeekPage() {
   const { navigate } = useNavigation();
-  const { account } = useActiveAccount();
+  const { account, mode } = useActiveAccount();
   const { scenario } = useScenario();
   const settings = useSettings();
   const { report, headlineObservation, otherObservations } = usePatterns();
 
+  const header = (
+    <header className="flex items-center justify-between gap-2 border-b border-border bg-canvas-raised px-4 py-3">
+      <p className="font-display text-lg">우리</p>
+      {/*
+        AI 상담 진입점은 작은 버튼으로. 상세 설명(공유 리포트 vs 개인 상담, 비공개 안내)은 상담
+        화면에 있다. 리포트 상태 분기 바깥이라 분석 철회·대화 부족 상태에서도 접근 가능하다.
+      */}
+      <button
+        type="button"
+        onClick={() => navigate('ask')}
+        className="rounded-full border border-coaching-border bg-coaching-soft px-3 py-1.5 text-xs font-medium text-coaching"
+      >
+        AI에게 물어보기
+      </button>
+    </header>
+  );
+
+  // 신규 체험: AI 분석·주간 발견을 제공하지 않는다(0010). 대화가 없으면 시작 안내, 있으면 통계만.
+  // 통계는 저장된 대화에서 파생하므로, 탭을 열 때마다(WeekPage 재마운트) 여기서 직접 최신값을 읽는다
+  // — PatternProvider는 탭 이동만으로는 리렌더되지 않아 컨텍스트의 report가 뒤처질 수 있다.
+  if (mode === 'trial') {
+    return (
+      <TrialWeek header={header} coupleId={account.coupleId} onOpenChat={() => navigate('chat')} />
+    );
+  }
+
   return (
     <div className="no-scrollbar flex flex-1 flex-col overflow-y-auto">
-      <header className="flex items-center justify-between gap-2 border-b border-border bg-canvas-raised px-4 py-3">
-        <p className="font-display text-lg">우리</p>
-        {/*
-          AI 상담 진입점은 작은 버튼으로. 상세 설명(공유 리포트 vs 개인 상담, 비공개 안내)은 상담
-          화면에 있다. 리포트 상태 분기 바깥이라 분석 철회·대화 부족 상태에서도 접근 가능하다.
-        */}
-        <button
-          type="button"
-          onClick={() => navigate('ask')}
-          className="rounded-full border border-coaching-border bg-coaching-soft px-3 py-1.5 text-xs font-medium text-coaching"
-        >
-          AI에게 물어보기
-        </button>
-      </header>
+      {header}
 
       <ReportBody
         analysisActive={settings.coupleAnalysisActive}
@@ -85,6 +99,57 @@ export function WeekPage() {
       <p className="px-4 pb-6 text-center text-[11px] text-ink-faint" aria-hidden="true">
         {account.nickname}님 시점 · 매주 월요일에 새 리포트가 도착해요
       </p>
+    </div>
+  );
+}
+
+/**
+ * 신규 체험 커플의 '우리' 탭(0010). AI 분석·주간 발견은 없고, 통계만 저장된 대화에서 만든다.
+ * WeekPage가 탭을 열 때마다 다시 마운트되므로 여기서 서비스를 직접 읽어 최신 통계를 보장한다.
+ */
+function TrialWeek({
+  header,
+  coupleId,
+  onOpenChat,
+}: {
+  header: ReactNode;
+  coupleId: string;
+  onOpenChat: () => void;
+}) {
+  const stats = useMemo(
+    () => createMockPatternService().getWeeklyReport(coupleId).stats,
+    [coupleId],
+  );
+
+  return (
+    <div className="no-scrollbar flex flex-1 flex-col overflow-y-auto">
+      {header}
+      {stats.totalMessages === 0 ? (
+        <div className="flex flex-1 flex-col">
+          <StateCard
+            icon="💬"
+            title="아직 나눈 대화가 없어요"
+            description="대화를 시작하면 이번 주 통계가 여기에 쌓여요."
+            action={
+              <button
+                type="button"
+                onClick={onOpenChat}
+                className="rounded-full bg-accent px-4 py-2 text-sm font-medium text-canvas-raised"
+              >
+                대화로 이동
+              </button>
+            }
+          />
+        </div>
+      ) : (
+        <div className="flex flex-col gap-4 px-4 py-5">
+          <WeeklyStatsStrip stats={stats} />
+          <p className="rounded-2xl border border-border bg-canvas-raised px-4 py-3 text-xs leading-relaxed text-ink-soft">
+            이번 체험에서는 AI 분석 결과(주간 발견·코칭)를 제공하지 않아요. 위 통계는 이번 주에
+            실제로 주고받은 메시지를 바탕으로 해요.
+          </p>
+        </div>
+      )}
     </div>
   );
 }

@@ -61,12 +61,19 @@ export function MemoriesProvider({ children }: { children: ReactNode }) {
     memoriesService.getRememberWhenEnabled(),
   );
 
-  // 계정을 전환하면 개인별 파생 목록만 즉시 다시 읽는다(커플 공유 memories는 그대로).
+  // 계정을 전환하면(같은 커플 안 시점 전환) 개인별 파생 목록만 즉시 다시 읽는다.
   const [loadedAccountId, setLoadedAccountId] = useState(account.id);
   if (loadedAccountId !== account.id) {
     setLoadedAccountId(account.id);
     setSuggestions(memoriesService.listSuggestions(coupleId, account.id));
     setRememberWhen(memoriesService.getRememberWhen(coupleId, account.id));
+  }
+
+  // 커플(또는 모드)이 바뀌면 커플 공유 추억까지 새로 불러온다 — 이전 커플의 추억이 남지 않도록.
+  const [loadedCoupleId, setLoadedCoupleId] = useState(coupleId);
+  if (loadedCoupleId !== coupleId) {
+    setLoadedCoupleId(coupleId);
+    setMemories(memoriesService.listMemories(coupleId));
   }
 
   const value = useMemo<MemoriesContextValue>(() => {

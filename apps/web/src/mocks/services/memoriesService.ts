@@ -6,6 +6,7 @@ import {
   SEED_MEMORY_SUGGESTIONS,
 } from '../fixtures/memories';
 import { pickRememberWhen, sortBySavedNewest, visibleSuggestions } from '../domain/memories';
+import { isReviewCouple } from '../fixtures/accounts';
 import { coupleKey, devKey, readJSON, userKey, writeJSON } from '../storage';
 
 /**
@@ -92,7 +93,9 @@ const REMEMBER_WHEN_ENABLED_KEY = devKey('rememberWhenEnabled');
 
 /** 저장소를 읽어 시드가 아닌 독립된 사본을 돌려준다(시드 상수를 실수로 변형하지 않도록). */
 function load(coupleId: string): Memory[] {
-  const raw = readJSON<Memory[]>(memoriesKey(coupleId), SEED_MEMORIES);
+  // 예시 추억은 검토 커플에게만. 신규 체험 커플은 빈 앨범으로 시작한다(0010).
+  const fallback = isReviewCouple(coupleId) ? SEED_MEMORIES : [];
+  const raw = readJSON<Memory[]>(memoriesKey(coupleId), fallback);
   return raw.map((memory) => ({
     ...memory,
     images: memory.images ? memory.images.map((image) => ({ ...image })) : undefined,

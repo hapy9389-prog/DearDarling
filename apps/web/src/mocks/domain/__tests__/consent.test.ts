@@ -1,5 +1,28 @@
 import { describe, expect, it } from 'vitest';
-import { createDefaultUserSettings, isCoupleAnalysisActive } from '../consent';
+import {
+  createDefaultTrialUserSettings,
+  createDefaultUserSettings,
+  isCoupleAnalysisActive,
+} from '../consent';
+
+describe('createDefaultTrialUserSettings — 신규 체험 기본값', () => {
+  it('AI 분석 동의는 기본으로 꺼져 있다(가입과 동의 분리)', () => {
+    const settings = createDefaultTrialUserSettings('trial-user-1');
+    expect(settings.analysisConsent).toBe(false);
+    expect(settings.coachingVisible).toBe(true);
+    expect(settings.draftHelpEnabled).toBe(false);
+  });
+
+  it('둘 다 동의하지 않은 신규 커플은 커플 분석이 비활성이다', () => {
+    const mine = createDefaultTrialUserSettings('trial-a');
+    const partner = createDefaultTrialUserSettings('trial-b');
+    expect(isCoupleAnalysisActive(mine, partner)).toBe(false);
+  });
+
+  it('검토 계정(민준·서연)의 기본값은 예전처럼 동의 켜짐으로 남는다', () => {
+    expect(createDefaultUserSettings('user-minjun').analysisConsent).toBe(true);
+  });
+});
 
 describe('isCoupleAnalysisActive — 분석 철회 규칙', () => {
   it('두 사람 모두 동의하면 커플 분석이 활성화된다', () => {

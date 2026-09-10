@@ -22,3 +22,16 @@ export function getPartner(userId: string): TestAccount {
   if (!partner) throw new Error('상대 테스트 계정을 찾을 수 없습니다.');
   return partner;
 }
+
+/**
+ * 검토 모드(민준·서연 예시)와 신규 체험을 구분하는 기준(0010).
+ * 시드 대화·코칭·리포트·추억은 검토 커플에만 돌려주고, 체험 커플은 빈 상태로 시작한다.
+ * 실제 백엔드로 교체할 때 이 두 함수와 호출부를 함께 제거한다.
+ */
+export function isReviewCouple(coupleId: string): boolean {
+  return coupleId === COUPLE_ID;
+}
+
+export function isReviewUser(userId: string): boolean {
+  return TEST_ACCOUNTS.some((a) => a.id === userId);
+}

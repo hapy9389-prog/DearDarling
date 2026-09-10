@@ -1,3 +1,4 @@
+import { Navigate, useLocation } from 'react-router';
 import { useNavigation } from '../state/NavigationContext';
 import { MockModeBanner } from './MockModeBanner';
 import { BottomNav } from './BottomNav';
@@ -7,10 +8,17 @@ import { WeekPage } from '../features/week/WeekPage';
 import { MemoriesPage } from '../features/memories/MemoriesPage';
 import { SettingsPage } from '../features/settings/SettingsPage';
 import { AskAiPage } from '../features/ask/AskAiPage';
+import { AppDevTools } from '../features/dev/AppDevTools';
 
 export function AppShell() {
   const { screen } = useNavigation();
+  const { pathname } = useLocation();
   const chatHidden = screen !== 'chat';
+
+  // `/app`(세그먼트 없음)로 들어오면 홈으로 정규화한다.
+  if (pathname === '/app' || pathname === '/app/') {
+    return <Navigate to="/app/home" replace />;
+  }
 
   return (
     <div className="flex h-full flex-col">
@@ -35,6 +43,7 @@ export function AppShell() {
         {screen === 'ask' && <AskAiPage />}
       </div>
       <BottomNav />
+      <AppDevTools />
     </div>
   );
 }

@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from '../../App';
+import { renderApp } from '../../test/renderApp';
+import { seedReviewSession } from '../../test/seed';
 import { resetAllMockData } from '../../mocks/storage';
 
 afterEach(() => {
@@ -11,7 +12,7 @@ afterEach(() => {
 describe('4탭 내비게이션', () => {
   it('앱을 열면 홈이 보이고, 네 개 탭을 오갈 수 있다', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp({ session: seedReviewSession() });
 
     // 기본 진입 = 홈
     expect(screen.getByText(/함께한 지 [\d,]+일/)).toBeInTheDocument();
@@ -31,7 +32,7 @@ describe('4탭 내비게이션', () => {
 
   it('홈 상단 설정 버튼으로 설정에 들어갔다가 홈으로 돌아온다', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp({ session: seedReviewSession() });
 
     await user.click(screen.getByRole('button', { name: '설정' }));
     expect(screen.getByLabelText(/AI 분석 동의/)).toBeInTheDocument();
@@ -44,7 +45,7 @@ describe('4탭 내비게이션', () => {
 
   it('대화 탭은 언마운트되지 않지만 다른 탭에서는 보이지 않는다', async () => {
     const user = userEvent.setup();
-    render(<App />);
+    renderApp({ session: seedReviewSession() });
 
     await user.click(screen.getByRole('button', { name: '대화' }));
     expect(screen.getByTestId('message-list')).toBeVisible();

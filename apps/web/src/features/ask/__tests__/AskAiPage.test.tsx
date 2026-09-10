@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen } from '@testing-library/react';
+import { act, fireEvent, screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from '../../../App';
+import { renderApp } from '../../../test/renderApp';
+import { seedReviewSession } from '../../../test/seed';
 import { resetAllMockData } from '../../../mocks/storage';
 
 afterEach(() => {
@@ -15,7 +16,7 @@ const A1_FRAGMENT = /오늘 있었던 일 하나를 구체적으로 나누는 �
 
 async function openAsk(): Promise<User> {
   const user = userEvent.setup();
-  render(<App />);
+  renderApp({ session: seedReviewSession() });
   await user.click(screen.getByRole('button', { name: '우리' }));
   await user.click(screen.getByRole('button', { name: /AI에게 물어보기/ }));
   return user;
@@ -98,7 +99,7 @@ describe('AI에게 물어보기 (개인 상담)', () => {
   it('타이머 제어: 답변 대기 중 민준→서연→민준으로 돌아와도 이전 답변과 완료 처리를 폐기한다', async () => {
     vi.useFakeTimers();
     try {
-      render(<App />);
+      renderApp({ session: seedReviewSession() });
       fireEvent.click(screen.getByRole('button', { name: '우리' }));
       fireEvent.click(screen.getByRole('button', { name: /AI에게 물어보기/ }));
 

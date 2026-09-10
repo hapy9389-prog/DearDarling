@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { useActiveAccount } from '../../state/ActiveAccountContext';
 import { useMemories } from '../../state/MemoriesContext';
-import { getAccount } from '../../mocks/fixtures/accounts';
 import { canEditMemory, conversationDateLabel, memoryImages } from '../../mocks/domain/memories';
 import type { Memory } from '../../mocks/types';
 import { ExampleImage } from './ExampleImage';
@@ -11,12 +10,12 @@ import { ExampleImage } from './ExampleImage';
  * 메모 수정·삭제는 저장한 사람만. 삭제해도 원래 대화 메시지는 지우지 않는다.
  */
 export function MemoryDetail({ memory, onBack }: { memory: Memory; onBack: () => void }) {
-  const { account } = useActiveAccount();
+  const { account, lookupMember } = useActiveAccount();
   const { updateNote, deleteMemory } = useMemories();
 
   const canEdit = canEditMemory(memory, account.id);
-  const sender = getAccount(memory.quoteSenderId);
-  const savedBy = getAccount(memory.savedByUserId);
+  const sender = lookupMember(memory.quoteSenderId);
+  const savedBy = lookupMember(memory.savedByUserId);
   const images = memoryImages(memory);
 
   const [editing, setEditing] = useState(false);

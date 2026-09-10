@@ -8,6 +8,8 @@ export type CoachingAreaState =
   | { kind: 'hidden' }
   | { kind: 'withheld-optout' }
   | { kind: 'idle' }
+  /** 신규 체험 모드 — AI 코칭을 제공하지 않는다(0010). 코칭 검토는 민준·서연 예시 모드에서. */
+  | { kind: 'trial-unavailable' }
   | { kind: 'ready'; suggestion: CoachingSuggestion };
 
 export function upsertMessage(messages: ChatMessage[], next: ChatMessage): ChatMessage[] {

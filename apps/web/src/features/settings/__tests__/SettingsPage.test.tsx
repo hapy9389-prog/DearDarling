@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { render, screen } from '@testing-library/react';
+import { screen } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from '../../../App';
+import { renderApp } from '../../../test/renderApp';
+import { seedReviewSession } from '../../../test/seed';
 import { resetAllMockData } from '../../../mocks/storage';
 
 afterEach(() => {
@@ -9,7 +10,7 @@ afterEach(() => {
 });
 
 async function openSettings(user: ReturnType<typeof userEvent.setup>) {
-  render(<App />);
+  renderApp({ session: seedReviewSession() });
   await user.click(screen.getByRole('button', { name: '설정' }));
 }
 

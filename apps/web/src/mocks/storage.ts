@@ -17,6 +17,11 @@ export function devKey(key: string): string {
   return `${NAMESPACE}:dev:${key}`;
 }
 
+/** 신규 체험 흐름 전용 상태(가입 사용자 목록, 초대, 세션). 검토 계정 데이터와 분리된다(0010). */
+export function trialKey(key: string): string {
+  return `${NAMESPACE}:trial:${key}`;
+}
+
 export function readJSON<T>(key: string, fallback: T): T {
   try {
     const raw = window.localStorage.getItem(key);

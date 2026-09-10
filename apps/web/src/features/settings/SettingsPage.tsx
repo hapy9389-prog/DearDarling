@@ -1,17 +1,22 @@
-import type { ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { useActiveAccount } from '../../state/ActiveAccountContext';
 import { useSettings } from '../../state/SettingsContext';
+import { useSession } from '../../state/SessionContext';
 import { useNavigation } from '../../state/NavigationContext';
+import { createMockRelationshipService } from '../../mocks/services/relationshipService';
+import { daysTogether } from '../../mocks/domain/relationship';
+import { ConsentToggle } from './ConsentToggle';
 
 /**
- * 설정 — 홈 상단 ⚙️로 진입하는 하위 화면(0003). 검토 도구(DevPanel)에 임시로 있던
- * AI 분석 동의·코칭 카드 표시 토글을 여기로 옮겼다.
- * 분석 철회(커플 전체 분석 중단)와 개인 코칭 숨기기(내 화면 표시 설정)는 다른 동작이라 화면에서 구분해 안내한다.
+ * 설정 — 홈 상단 ⚙️로 진입하는 하위 화면(0003). AI 분석 동의·코칭 카드 표시·작성 도움,
+ * 그리고 신규 체험 커플의 커플 정보(사귀기 시작한 날)를 관리한다(0010).
+ * 분석 철회(커플 전체)와 개인 코칭 숨기기(내 화면 표시)는 다른 동작이라 화면에서 구분해 안내한다.
  */
 export function SettingsPage() {
   const { navigate } = useNavigation();
-  const { account, partner } = useActiveAccount();
+  const { account, partner, mode } = useActiveAccount();
   const { mine, partner: partnerSettings, coupleAnalysisActive, updateMine } = useSettings();
+  const { logOut } = useSession();
 
   return (
     <div className="no-scrollbar flex flex-1 flex-col overflow-y-auto">
@@ -34,10 +39,8 @@ export function SettingsPage() {
         <section className="rounded-2xl border border-border bg-canvas-raised px-4 py-4">
           <p className="eyebrow mb-3 text-ink-faint">AI 분석</p>
 
-          <SettingToggle
-            label="AI 분석 동의"
-            description="두 사람이 모두 동의한 기간에 나눈 대화를 AI가 살펴보고 코칭·주간 리포트·패턴 관찰에 사용해요. 끄면(분석 철회) 그때부터 새 분석이 멈추고, 두 사람 모두에게 홈 요약·주간 리포트·코칭이 나오지 않아요."
-            checked={mine.analysisConsent}
+          <ConsentToggle
+            value={mine.analysisConsent}
             onChange={(checked) => updateMine({ analysisConsent: checked })}
           />
 
@@ -76,8 +79,87 @@ export function SettingsPage() {
             onChange={(checked) => updateMine({ draftHelpEnabled: checked })}
           />
         </section>
+
+        {mode === 'trial' && <CoupleInfoSection coupleId={account.coupleId} />}
+
+        {mode === 'trial' && (
+          <section className="rounded-2xl border border-border bg-canvas-raised px-4 py-4">
+            <p className="eyebrow mb-3 text-ink-faint">계정</p>
+            <button
+              type="button"
+              onClick={logOut}
+              className="w-full rounded-xl border border-border px-3 py-2 text-left text-sm text-ink-soft"
+            >
+              로그아웃
+            </button>
+            <p className="mt-2 text-xs text-ink-faint">
+              로그아웃하면 작성 중이던 대화 초안·개인 상담 내용이 정리돼요.
+            </p>
+          </section>
+        )}
       </div>
     </div>
+  );
+}
+
+/** 커플 정보 — 사귀기 시작한 날(선택)과 연결일을 분리해 보여주고, 시작일을 추가·수정·삭제한다. */
+function CoupleInfoSection({ coupleId }: { coupleId: string }) {
+  const relationship = useMemo(() => createMockRelationshipService(), []);
+  const [profile, setProfile] = useState(() => relationship.getCoupleProfile(coupleId));
+  const [draft, setDraft] = useState(profile.relationshipStartDate ?? '');
+
+  const days = profile.relationshipStartDate ? daysTogether(profile.relationshipStartDate) : null;
+  const connectedLabel = new Date(profile.connectedAt).toLocaleDateString('ko-KR');
+
+  function save(value: string | null) {
+    const next = relationship.updateCoupleProfile(coupleId, { relationshipStartDate: value });
+    setProfile(next);
+    setDraft(next.relationshipStartDate ?? '');
+  }
+
+  return (
+    <section className="rounded-2xl border border-border bg-canvas-raised px-4 py-4">
+      <p className="eyebrow mb-3 text-ink-faint">커플 정보</p>
+
+      <label className="block">
+        <span className="text-sm font-medium text-ink">사귀기 시작한 날</span>
+        <span className="mt-0.5 block text-xs text-ink-soft">
+          선택 사항이에요. 정하면 홈에 “함께한 지 N일”이 나와요.
+        </span>
+        <div className="mt-2 flex gap-2">
+          <input
+            aria-label="사귀기 시작한 날"
+            type="date"
+            value={draft}
+            onChange={(e) => setDraft(e.target.value)}
+            className="flex-1 rounded-lg border border-border bg-canvas px-3 py-2 text-sm outline-none focus:border-accent"
+          />
+          <button
+            type="button"
+            onClick={() => save(draft || null)}
+            className="rounded-lg bg-accent px-3 py-2 text-sm font-medium text-canvas-raised"
+          >
+            저장
+          </button>
+        </div>
+        {profile.relationshipStartDate && (
+          <button
+            type="button"
+            onClick={() => save(null)}
+            className="mt-2 text-xs text-ink-faint underline"
+          >
+            시작한 날 지우기
+          </button>
+        )}
+      </label>
+
+      <p className="mt-3 rounded-xl bg-canvas px-3 py-2.5 text-xs leading-relaxed text-ink-soft">
+        {days !== null
+          ? `함께한 지 ${days.toLocaleString('ko-KR')}일`
+          : '아직 사귀기 시작한 날을 정하지 않았어요.'}
+        <span className="mt-1 block text-ink-faint">연결한 날: {connectedLabel}</span>
+      </p>
+    </section>
   );
 }
 

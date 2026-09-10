@@ -1,7 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { act, fireEvent, screen, waitFor, within } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
-import { App } from '../../../App';
+import { renderApp } from '../../../test/renderApp';
+import { seedReviewSession } from '../../../test/seed';
 import { resetAllMockData } from '../../../mocks/storage';
 import { SEED_DRAFT_HELP_EXAMPLES } from '../../../mocks/fixtures/draftHelp';
 
@@ -16,7 +17,7 @@ const SUGGESTION_TEXT = '혹시 무슨 일 있었어? 얘기하고 싶으면 들
  */
 async function renderChatScreen() {
   const user = userEvent.setup();
-  render(<App />);
+  renderApp({ session: seedReviewSession() });
   await user.click(screen.getByRole('button', { name: '대화' }));
   return user;
 }
@@ -215,7 +216,7 @@ describe('대화 화면 핵심 동작', () => {
 
   it('홈 새로고침 후 대화 첫 진입에도 입력창이 찌부러지지 않고, 여러 줄 초안이 탭 이동을 견딘다', async () => {
     const user = userEvent.setup();
-    render(<App />); // 홈이 먼저 보이고 대화 화면은 숨겨진 채 마운트된다
+    renderApp({ session: seedReviewSession() }); // 홈이 먼저 보이고 대화 화면은 숨겨진 채 마운트된다
 
     await user.click(screen.getByRole('button', { name: '대화' }));
     const input = screen.getByLabelText('메시지 입력') as HTMLTextAreaElement;
@@ -518,7 +519,7 @@ describe('대화 목록 스크롤', () => {
   it('첫 진입에서는 최신으로 이동하고, 탭을 다시 방문하면 스크롤을 건드리지 않는다', async () => {
     const scrollTo = spyScrollTo();
     const user = userEvent.setup();
-    render(<App />);
+    renderApp({ session: seedReviewSession() });
 
     await user.click(screen.getByRole('button', { name: '대화' }));
     expect(scrollTo).toHaveBeenCalled(); // 첫 진입 스크롤
@@ -534,7 +535,7 @@ describe('대화 목록 스크롤', () => {
   it('내가 메시지를 전송하면 최신 메시지로 이동한다', async () => {
     const scrollTo = spyScrollTo();
     const user = userEvent.setup();
-    render(<App />);
+    renderApp({ session: seedReviewSession() });
     await user.click(screen.getByRole('button', { name: '대화' }));
     scrollTo.mockClear();
 

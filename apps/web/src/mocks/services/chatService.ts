@@ -1,6 +1,7 @@
 import type { ChatMessage, ChatDevScenario } from '../types';
 import { mockDelay } from '../delay';
 import { SEED_MESSAGES } from '../fixtures/messages';
+import { isReviewCouple } from '../fixtures/accounts';
 import { coupleKey, readJSON, writeJSON } from '../storage';
 
 export interface SendMessageParams {
@@ -38,7 +39,9 @@ function loadMessages(coupleId: string, scenario: ChatDevScenario): ChatMessage[
   // (직전에 무엇을 보냈든) 항상 빈 화면으로 시작한다. 자세한 이유는
   // docs/decisions/0002-chat-review-behavior-rules.md 참고.
   if (scenario === 'empty') return [];
-  return readJSON<ChatMessage[]>(mainMessagesStorageKey(coupleId), SEED_MESSAGES);
+  // 시드 대화는 검토 커플(민준·서연)에게만. 신규 체험 커플은 빈 대화로 시작한다(0010).
+  const fallback = isReviewCouple(coupleId) ? SEED_MESSAGES : [];
+  return readJSON<ChatMessage[]>(mainMessagesStorageKey(coupleId), fallback);
 }
 
 function saveMessages(coupleId: string, scenario: ChatDevScenario, messages: ChatMessage[]): void {

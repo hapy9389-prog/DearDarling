@@ -1,6 +1,8 @@
-import type { PatternObservation, WeeklyReport } from '../types';
+import type { ChatMessage, PatternObservation, WeeklyReport } from '../types';
 import { SEED_PATTERN_OBSERVATIONS, SEED_WEEKLY_REPORT } from '../fixtures/patterns';
 import { ownOpinion } from '../domain/patterns';
+import { buildTrialWeeklyReport } from '../domain/weeklyReport';
+import { isReviewCouple } from '../fixtures/accounts';
 import { coupleKey, readJSON, writeJSON } from '../storage';
 
 /**
@@ -51,7 +53,9 @@ function storageKey(coupleId: string): string {
 
 /** 저장소를 읽어 시드가 아닌 독립된 사본을 돌려준다(시드 상수를 실수로 변형하지 않도록). */
 function load(coupleId: string): PatternObservation[] {
-  const raw = readJSON<PatternObservation[]>(storageKey(coupleId), SEED_PATTERN_OBSERVATIONS);
+  // 시드 관찰은 검토 커플에게만. 신규 체험 커플엔 관찰이 없다(0010).
+  const fallback = isReviewCouple(coupleId) ? SEED_PATTERN_OBSERVATIONS : [];
+  const raw = readJSON<PatternObservation[]>(storageKey(coupleId), fallback);
   return raw.map((observation) => ({
     ...observation,
     opinions: observation.opinions.map((opinion) => ({ ...opinion })),
@@ -86,10 +90,10 @@ export function createMockPatternService(): PatternService {
     },
 
     getWeeklyReport(coupleId) {
-      if (coupleId !== SEED_WEEKLY_REPORT.coupleId) {
-        throw new Error(`알 수 없는 커플입니다: ${coupleId}`);
-      }
-      return SEED_WEEKLY_REPORT;
+      if (isReviewCouple(coupleId)) return SEED_WEEKLY_REPORT;
+      // 신규 체험 커플: AI 분석 결과 없이, 저장된 대화량으로만 통계를 만든다(0010).
+      const messages = readJSON<ChatMessage[]>(coupleKey(coupleId, 'messages'), []);
+      return buildTrialWeeklyReport(coupleId, messages);
     },
 
     addOpinion({ coupleId, observationId, authorId, text }) {

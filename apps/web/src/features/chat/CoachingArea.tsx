@@ -51,6 +51,14 @@ export function CoachingArea({
     );
   }
 
+  if (state.kind === 'trial-unavailable') {
+    return (
+      <InfoBar tone="muted" icon="✦">
+        이번 체험에서는 AI 코칭을 제공하지 않아요.
+      </InfoBar>
+    );
+  }
+
   if (state.kind === 'withheld-optout') {
     return (
       <InfoBar tone="muted" icon="🚫">

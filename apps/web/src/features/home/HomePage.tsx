@@ -7,8 +7,10 @@ import { useMemories } from '../../state/MemoriesContext';
 import { usePatterns } from '../../state/PatternContext';
 import { createMockRelationshipService } from '../../mocks/services/relationshipService';
 import { daysTogether } from '../../mocks/domain/relationship';
-import { getAccount } from '../../mocks/fixtures/accounts';
 import { memoryImages } from '../../mocks/domain/memories';
+import { hadSavedMessageToday } from '../../mocks/domain/weeklyReport';
+import { coupleKey, readJSON } from '../../mocks/storage';
+import type { ChatMessage } from '../../mocks/types';
 import { Avatar } from '../../shared/components/Avatar';
 import { ExampleImage } from '../memories/ExampleImage';
 
@@ -23,7 +25,7 @@ import { ExampleImage } from '../memories/ExampleImage';
  * 홈은 usePatterns()·useScenario()·useSettings()만 읽고 대표 발견·추억 데이터를 따로 관리하지 않는다.
  */
 export function HomePage() {
-  const { account, partner } = useActiveAccount();
+  const { account, partner, lookupMember, mode } = useActiveAccount();
   const { scenario } = useScenario();
   const settings = useSettings();
   const { navigate } = useNavigation();
@@ -32,10 +34,15 @@ export function HomePage() {
 
   const relationship = useMemo(() => createMockRelationshipService(), []);
   const profile = relationship.getCoupleProfile(account.coupleId);
-  const days = daysTogether(profile.relationshipStartDate);
+  // 연애 시작일은 선택 입력이라 없을 수 있다(0010) — 이때는 "함께한 지 N일"을 만들지 않는다.
+  const days = profile.relationshipStartDate ? daysTogether(profile.relationshipStartDate) : null;
 
   const analysisActive = settings.coupleAnalysisActive;
   const recentMemories = memories.slice(0, 2);
+  const trial = mode === 'trial';
+  const talkedToday =
+    trial &&
+    hadSavedMessageToday(readJSON<ChatMessage[]>(coupleKey(account.coupleId, 'messages'), []));
 
   return (
     <div className="no-scrollbar flex flex-1 flex-col overflow-y-auto">
@@ -63,13 +70,19 @@ export function HomePage() {
               <p className="text-sm font-medium text-ink">
                 {account.nickname} · {partner.nickname}
               </p>
-              <p className="eyebrow text-ink-faint">함께한 지 {days.toLocaleString('ko-KR')}일</p>
+              <p className="eyebrow text-ink-faint">
+                {days !== null
+                  ? `함께한 지 ${days.toLocaleString('ko-KR')}일`
+                  : '사귀기 시작한 날을 설정에서 더할 수 있어요'}
+              </p>
             </div>
           </div>
 
           <div className="mt-4">
             <p className="eyebrow mb-1.5 text-ink-faint">오늘의 우리</p>
             <TodayLine
+              trial={trial}
+              talkedToday={talkedToday}
               analysisActive={analysisActive}
               scenario={scenario}
               summary={relationship.getTodaySummary(account.coupleId)}
@@ -89,6 +102,7 @@ export function HomePage() {
         >
           <p className="eyebrow mb-1 text-ink-faint">우리</p>
           <ReportPreview
+            trial={mode === 'trial'}
             analysisActive={analysisActive}
             scenario={scenario}
             headlineTitle={headlineObservation?.title ?? null}
@@ -133,8 +147,8 @@ export function HomePage() {
                         </p>
                         <p className="mt-1 text-[11px] text-ink-faint">
                           {memory.note ? `${memory.note} · ` : ''}
-                          {getAccount(memory.quoteSenderId).nickname}의 말 ·{' '}
-                          {getAccount(memory.savedByUserId).nickname} 저장
+                          {lookupMember(memory.quoteSenderId).nickname}의 말 ·{' '}
+                          {lookupMember(memory.savedByUserId).nickname} 저장
                         </p>
                       </div>
                     </button>
@@ -154,6 +168,8 @@ export function HomePage() {
  * (분석 철회 → 대화 부족 → AI 준비 중 → AI 장애 → 실제 요약 예시).
  */
 function TodayLine({
+  trial,
+  talkedToday,
   analysisActive,
   scenario,
   summary,
@@ -161,13 +177,37 @@ function TodayLine({
   onOpenSettings,
   onOpenChat,
 }: {
+  trial: boolean;
+  talkedToday: boolean;
   analysisActive: boolean;
   scenario: string;
-  summary: string;
+  summary: string | null;
   partnerNickname: string;
   onOpenSettings: () => void;
   onOpenChat: () => void;
 }) {
+  // 체험 커플: AI 분석 결과를 아예 제공하지 않는다(0010). "분석했지만 못 찾았다"고 말하지 않는다.
+  // 오늘 대화 여부(오늘 saved 메시지)와 주간 통계 기간은 별개로 다룬다.
+  if (trial) {
+    if (!talkedToday) {
+      return (
+        <p className="text-sm leading-relaxed text-ink-soft">
+          오늘은 아직 나눈 대화가 없어요.{' '}
+          <button type="button" onClick={onOpenChat} className="text-accent underline">
+            {partnerNickname}님에게 말 걸기
+          </button>
+        </p>
+      );
+    }
+    return (
+      <>
+        <p className="text-sm leading-relaxed text-ink">오늘도 이야기를 나눴어요.</p>
+        <p className="mt-1.5 text-[11px] text-ink-faint">
+          이번 체험에서는 AI 요약을 제공하지 않아요.
+        </p>
+      </>
+    );
+  }
   if (!analysisActive) {
     return (
       <p className="text-sm leading-relaxed text-ink-soft">
@@ -213,11 +253,13 @@ function TodayLine({
 
 /** 우리 리포트 미리보기 — WeekPage의 ReportBody 게이팅과 같은 우선순위·문구를 맞춘다. */
 function ReportPreview({
+  trial,
   analysisActive,
   scenario,
   headlineTitle,
   hasHeadline,
 }: {
+  trial: boolean;
   analysisActive: boolean;
   scenario: string;
   headlineTitle: string | null;
@@ -225,6 +267,13 @@ function ReportPreview({
 }) {
   const link = <span className="text-accent">우리 탭에서 보기 →</span>;
 
+  if (trial) {
+    return (
+      <p className="text-sm leading-relaxed text-ink-soft">
+        이번 체험에서는 주간 리포트를 제공하지 않아요. 우리 탭에서 대화 통계만 볼 수 있어요. {link}
+      </p>
+    );
+  }
   if (!analysisActive) {
     return (
       <p className="text-sm leading-relaxed text-ink-soft">

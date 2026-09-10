@@ -48,6 +48,16 @@ export function PatternProvider({ children }: { children: ReactNode }) {
   const [storedObservations, setObservations] = useState<PatternObservation[]>(() =>
     patternService.listObservations(coupleId),
   );
+
+  // 커플(또는 모드)이 바뀌면 이전 커플의 관찰이 남지 않도록 다시 불러온다.
+  const [loadedCoupleId, setLoadedCoupleId] = useState(coupleId);
+  if (loadedCoupleId !== coupleId) {
+    setLoadedCoupleId(coupleId);
+    setObservations(patternService.listObservations(coupleId));
+  }
+
+  // 검토 커플의 리포트는 고정 시드. (체험 커플의 최신 통계는 PatternProvider가 탭 이동만으로는
+  // 리렌더되지 않으므로 WeekPage가 열릴 때 직접 다시 읽는다 — 0010.)
   const report = useMemo(() => patternService.getWeeklyReport(coupleId), [coupleId]);
   const [weeklyFindingsPresent, setWeeklyFindingsPresent] = useState(true);
 

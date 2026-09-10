@@ -2,7 +2,8 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { createMockPatternService } from '../patternService';
 import { isExcludedFromCoaching } from '../../domain/patterns';
 import { COUPLE_ID, TEST_ACCOUNTS } from '../../fixtures/accounts';
-import { resetAllMockData } from '../../storage';
+import { coupleKey, resetAllMockData, writeJSON } from '../../storage';
+import type { ChatMessage } from '../../types';
 
 const MINJUN = TEST_ACCOUNTS[0].id;
 const SEOYEON = TEST_ACCOUNTS[1].id;
@@ -137,5 +138,40 @@ describe('patternService — 코칭 활용 중단과 해제', () => {
     service.optOutOfCoaching({ coupleId: COUPLE_ID, observationId: 'pat-1', userId: MINJUN });
     service.optOutOfCoaching({ coupleId: COUPLE_ID, observationId: 'pat-1', userId: MINJUN });
     expect(observation('pat-1').coachingOptOuts).toHaveLength(1);
+  });
+});
+
+describe('patternService — 신규 체험 커플에는 시드 분석이 없다', () => {
+  const TRIAL_COUPLE = 'trial-couple-1';
+
+  function savedMessage(createdAt: string): ChatMessage {
+    return {
+      id: crypto.randomUUID(),
+      coupleId: TRIAL_COUPLE,
+      senderId: 'trial-user-a',
+      body: '메시지',
+      createdAt,
+      status: 'saved',
+    };
+  }
+
+  it('시드 관찰을 돌려주지 않는다(빈 목록)', () => {
+    expect(service.listObservations(TRIAL_COUPLE)).toEqual([]);
+    // 검토 커플은 그대로 시드를 유지한다.
+    expect(service.listObservations(COUPLE_ID).length).toBeGreaterThan(0);
+  });
+
+  it('주간 리포트는 throw 없이, 대표 발견 없이, 저장된 대화량으로만 만들어진다', () => {
+    writeJSON(coupleKey(TRIAL_COUPLE, 'messages'), [
+      savedMessage(new Date().toISOString()),
+      savedMessage(new Date().toISOString()),
+    ]);
+    const report = service.getWeeklyReport(TRIAL_COUPLE);
+    expect(report.headlineObservationId).toBeNull();
+    expect(report.stats.totalMessages).toBe(2);
+  });
+
+  it('검토 커플 주간 리포트는 예전 시드 그대로다', () => {
+    expect(service.getWeeklyReport(COUPLE_ID).headlineObservationId).toBe('pat-1');
   });
 });

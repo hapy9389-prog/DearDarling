@@ -3,7 +3,7 @@ import { useNavigation } from '../../state/NavigationContext';
 import { useScenario } from '../../state/ScenarioContext';
 import { useSettings } from '../../state/SettingsContext';
 import { useMemories } from '../../state/MemoriesContext';
-import { getAccount } from '../../mocks/fixtures/accounts';
+import { useActiveAccount } from '../../state/ActiveAccountContext';
 import {
   conversationDateLabel,
   groupBySavedDate,
@@ -168,7 +168,8 @@ function SuggestionCard({
   onHide: (id: string) => void;
   onOpen: (id: string) => void;
 }) {
-  const sender = getAccount(suggestion.quoteSenderId);
+  const { lookupMember } = useActiveAccount();
+  const sender = lookupMember(suggestion.quoteSenderId);
   return (
     <article className="rounded-2xl border border-coaching-border bg-coaching-soft px-4 py-3">
       {suggestion.images && suggestion.images[0] && (
@@ -296,8 +297,9 @@ function Album({ memories, onOpen }: { memories: Memory[]; onOpen: (id: string) 
 }
 
 function MemoryCard({ memory, onOpen }: { memory: Memory; onOpen: (id: string) => void }) {
-  const sender = getAccount(memory.quoteSenderId);
-  const savedBy = getAccount(memory.savedByUserId);
+  const { lookupMember } = useActiveAccount();
+  const sender = lookupMember(memory.quoteSenderId);
+  const savedBy = lookupMember(memory.savedByUserId);
   const layout = memoryCardLayout(memory);
 
   const meta = (
