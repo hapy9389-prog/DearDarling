@@ -14,7 +14,7 @@ export function SettingsPage() {
   const { mine, partner: partnerSettings, coupleAnalysisActive, updateMine } = useSettings();
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto">
+    <div className="no-scrollbar flex flex-1 flex-col overflow-y-auto">
       <header className="flex items-center gap-2 border-b border-border bg-canvas-raised px-2 py-3">
         <button
           type="button"
@@ -71,11 +71,9 @@ export function SettingsPage() {
 
           <SettingToggle
             label="작성 중 표현 도움"
-            description="메시지를 쓰는 동안 표현을 다듬도록 돕는 기능이에요. 아직 준비 중이라 지금은 꺼져 있어요."
-            checked={false}
-            disabled
-            badge="준비 중"
-            onChange={() => {}}
+            description="메시지를 쓰는 동안 표현을 다듬도록 돕는 개인 설정이에요. 지금은 지정된 예시 문장에 대해서만 대체 표현을 보여주는 화면 검토용이고, 상대 대화를 분석하지 않아요. 기본은 꺼져 있어요."
+            checked={mine.draftHelpEnabled}
+            onChange={(checked) => updateMine({ draftHelpEnabled: checked })}
           />
         </section>
       </div>

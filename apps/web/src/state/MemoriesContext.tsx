@@ -31,6 +31,8 @@ interface MemoriesContextValue {
   saveMemory: (message: SavedMessageInput, note: string) => Memory | undefined;
   updateNote: (memoryId: string, note: string) => void;
   deleteMemory: (memoryId: string) => void;
+  /** 검토 도구 전용: 저장소에 없는 시드 추억만 덧붙인다(기존 저장 데이터는 그대로). */
+  refillSeedMemories: () => void;
   keepSuggestion: (suggestionId: string) => Memory | undefined;
   hideSuggestion: (suggestionId: string) => void;
   dismissRememberWhen: (dismissKey: string) => void;
@@ -99,6 +101,9 @@ export function MemoriesProvider({ children }: { children: ReactNode }) {
       },
       deleteMemory: (memoryId) => {
         syncDerived(memoriesService.deleteMemory({ coupleId, memoryId, userId: account.id }));
+      },
+      refillSeedMemories: () => {
+        syncDerived(memoriesService.seedMissingMemories(coupleId));
       },
       keepSuggestion: (suggestionId) => {
         const target = memoriesService

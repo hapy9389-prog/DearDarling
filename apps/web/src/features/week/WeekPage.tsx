@@ -37,7 +37,7 @@ export function WeekPage() {
   const { report, headlineObservation, otherObservations } = usePatterns();
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto">
+    <div className="no-scrollbar flex flex-1 flex-col overflow-y-auto">
       <header className="flex items-center justify-between gap-2 border-b border-border bg-canvas-raised px-4 py-3">
         <p className="font-display text-lg">우리</p>
         {/*

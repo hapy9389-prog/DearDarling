@@ -61,6 +61,7 @@ export function CoachingArea({
 
   return (
     <ReadyCoachingCard
+      headline={state.suggestion.headline}
       insight={state.suggestion.insight}
       evidenceText={state.suggestion.evidenceText}
       alternatives={state.suggestion.alternatives}
@@ -96,6 +97,7 @@ function InfoBar({
 }
 
 function ReadyCoachingCard({
+  headline,
   insight,
   evidenceText,
   alternatives,
@@ -103,6 +105,7 @@ function ReadyCoachingCard({
   onSelectSuggestion,
   onHighlightEvidence,
 }: {
+  headline?: string;
   insight: string;
   evidenceText: string;
   alternatives: string[];
@@ -118,16 +121,23 @@ function ReadyCoachingCard({
   }, [expanded]);
 
   if (!expanded) {
+    // 접힌 상태: "힌트가 있어요" 같은 빈 안내가 아니라 실제 코칭 요점 한 줄.
+    // headline이 있으면 좁은 화면에서도 완결되는 문장이라 자르지 않고, 없으면 insight를 2줄로 방어.
     return (
       <button
         type="button"
         onClick={() => setExpanded(true)}
+        aria-label="코칭 카드 펼치기"
         className="flex w-full items-center gap-2 border-b border-coaching-border bg-coaching-soft px-4 py-2 text-left text-coaching"
       >
         <span aria-hidden="true">✦</span>
-        <span className="eyebrow">AI 코칭</span>
-        <span className="flex-1 truncate text-xs text-ink-soft">새로운 대화 힌트가 있어요</span>
-        <span aria-hidden="true">﹀</span>
+        <span className="eyebrow shrink-0">AI 코칭</span>
+        <span className={`flex-1 text-xs text-ink-soft ${headline ? '' : 'line-clamp-2'}`}>
+          {headline ?? insight}
+        </span>
+        <span aria-hidden="true" className="shrink-0">
+          ﹀
+        </span>
       </button>
     );
   }

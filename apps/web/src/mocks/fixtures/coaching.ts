@@ -20,6 +20,7 @@ export const SEED_COACHING_SUGGESTIONS: CoachingSuggestion[] = [
     coupleId: COUPLE_ID,
     recipientId: MINJUN,
     insight: '서연님이 오늘 좀 힘들었다고 했어요. 무슨 일이 있었는지 먼저 물어볼 수 있어요.',
+    headline: '먼저 무슨 일이 있었는지 물어보면 좋아요.',
     evidenceText: '“요즘 좀 힘들었어. 별일 아닌데 그냥 그래”라고 한 부분',
     evidenceMessageIds: [EVIDENCE_MESSAGE_ID],
     alternatives: [
@@ -35,6 +36,7 @@ export const SEED_COACHING_SUGGESTIONS: CoachingSuggestion[] = [
     recipientId: SEOYEON,
     insight:
       '민준님이 “오늘은 일단 좀 쉬자”라고 했어요. 지금 더 얘기하기보다 쉬고 싶다는 뜻일 수 있어요.',
+    headline: '지금은 더 얘기하기보다 쉬고 싶다는 뜻일 수 있어요.',
     evidenceText: '“그렇구나. 오늘은 일단 좀 쉬자”라고 한 부분',
     evidenceMessageIds: ['seed-msg-5'],
     alternatives: ['응 오늘은 좀 쉬자. 내일 다시 얘기해도 돼?', '알겠어, 필요하면 편하게 말해줘'],

@@ -69,7 +69,7 @@ export function AskAiPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col overflow-y-auto">
+    <div className="no-scrollbar flex flex-1 flex-col overflow-y-auto">
       <header className="flex items-center gap-2 border-b border-border bg-canvas-raised px-2 py-3">
         <button
           type="button"

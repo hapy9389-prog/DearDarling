@@ -20,6 +20,10 @@ export const REMEMBER_WHEN_ANCHOR_MILESTONE_DAYS = 100;
  * 커플 `couple-1`의 시드 추억(docs/decisions/0008). 사진 중심·대화 중심 카드가 섞여 보이도록 구성한다.
  * 사진이 붙은 시드는 지금 대화창에 없는 예전 메시지를 인용해, "원본 메시지가 없어도 추억은 유지"되는
  * 경우를 함께 보여준다. 예시 이미지는 실사가 아니라 일러스트이며 화면에 '예시 이미지' 라벨이 붙는다.
+ *
+ * 예시는 피로·갈등뿐 아니라 여행·농담·함께한 즐거운 순간도 함께 담는다. 정렬 기준(savedAt)은
+ * 최신 `mem-seed-talk-1`(1일 전, 대화) + `mem-seed-photo-night`(8일 전, 사진), 최오래 `mem-seed-sea`(20일 전)를
+ * 고정으로 두어, 홈의 '최근 추억'이 항상 사진 1 + 대화 1이 되고 기존 정렬 검증이 유지되게 한다.
  */
 export const SEED_MEMORIES: Memory[] = [
   {
@@ -61,6 +65,31 @@ export const SEED_MEMORIES: Memory[] = [
     conversationAt: daysAgoIso(12),
   },
   {
+    id: 'mem-seed-photo-trip',
+    coupleId: COUPLE_ID,
+    savedByUserId: SEOYEON,
+    savedAt: daysAgoIso(10),
+    note: '즉흥으로 떠난 1박 2일. 사진보다 그날 실컷 웃은 게 더 기억나.',
+    noteUpdatedAt: daysAgoIso(10),
+    sourceMessageId: 'archived-msg-trip-train',
+    layout: 'photo',
+    images: [{ variant: 'trip', alt: '기차 창가에 나란히 앉은 두 사람을 그린 예시 이미지' }],
+    quoteBody: '기차에서 먹는 김밥이 왜 이렇게 맛있냐',
+    quoteSenderId: SEOYEON,
+    conversationAt: daysAgoIso(11),
+  },
+  {
+    id: 'mem-seed-talk-joke',
+    coupleId: COUPLE_ID,
+    savedByUserId: MINJUN,
+    savedAt: daysAgoIso(15),
+    sourceMessageId: 'archived-msg-joke-bet',
+    layout: 'conversation',
+    quoteBody: '내기해서 진 사람이 오늘 설거지 ㅋㅋ 콜?',
+    quoteSenderId: MINJUN,
+    conversationAt: daysAgoIso(15),
+  },
+  {
     id: REMEMBER_WHEN_ANCHOR_MEMORY_ID,
     coupleId: COUPLE_ID,
     savedByUserId: MINJUN,
@@ -79,8 +108,41 @@ export const SEED_MEMORIES: Memory[] = [
 /**
  * AI가 발견한 순간(시드 예시 — 실제 분석 결과가 아니다). SEED_MEMORIES와 겹치지 않는 메시지만 쓴다.
  * `reason`은 관찰형으로만 쓰고 상대의 감정을 단정하지 않는다.
+ *
+ * 첫 항목(`sug-trip`)이 화면의 '대표' 발견으로 먼저 보이고 나머지는 '발견 더 보기'로 펼친다.
+ * 피로·갈등뿐 아니라 여행·감사·농담·즐거운 순간을 함께 담는다.
  */
 export const SEED_MEMORY_SUGGESTIONS: MemorySuggestion[] = [
+  {
+    id: 'sug-trip',
+    coupleId: COUPLE_ID,
+    sourceMessageId: 'archived-msg-trip-plan',
+    quoteBody: '이번엔 진짜 아무 계획 없이 훌쩍 떠나자',
+    quoteSenderId: MINJUN,
+    conversationAt: daysAgoIso(3),
+    reason: '둘 다 신나서 즉흥 여행을 함께 정한 순간이에요.',
+    images: [
+      { variant: 'trip', alt: '작은 가방을 메고 함께 길을 나서는 두 사람을 그린 예시 이미지' },
+    ],
+  },
+  {
+    id: 'sug-thanks',
+    coupleId: COUPLE_ID,
+    sourceMessageId: 'archived-msg-thanks',
+    quoteBody: '지난주에 챙겨줘서 고마웠어. 그때 말 못 했는데',
+    quoteSenderId: SEOYEON,
+    conversationAt: daysAgoIso(4),
+    reason: '고마운 마음을 뒤늦게라도 전한 대화예요.',
+  },
+  {
+    id: 'sug-joke',
+    coupleId: COUPLE_ID,
+    sourceMessageId: 'archived-msg-joke',
+    quoteBody: '너 그 표정 짓지 마 ㅋㅋㅋ 또 시작이야',
+    quoteSenderId: MINJUN,
+    conversationAt: daysAgoIso(6),
+    reason: '사소한 장난으로 같이 웃으며 넘어간 순간이에요.',
+  },
   {
     id: 'sug-evening',
     coupleId: COUPLE_ID,

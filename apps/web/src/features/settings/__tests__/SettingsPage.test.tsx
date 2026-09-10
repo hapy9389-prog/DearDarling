@@ -49,21 +49,24 @@ describe('설정 화면', () => {
     expect(screen.getByText(/서연님: 동의함/)).toBeInTheDocument();
     expect(screen.getByText(/상대의 설정은 바꿀 수 없어요/)).toBeInTheDocument();
 
-    // 내가 바꿀 수 있는(비활성 아님) 토글은 정확히 2개 — 내 설정만.
+    // 내가 바꿀 수 있는(비활성 아님) 토글은 내 설정 3개 — AI 분석 동의·코칭 카드 표시·작성 중 표현 도움.
     const enabled = screen
       .getAllByRole('checkbox')
       .filter((c) => !(c as HTMLInputElement).disabled);
-    expect(enabled).toHaveLength(2);
+    expect(enabled).toHaveLength(3);
   });
 
-  it('작성 중 표현 도움은 꺼져 있고 준비 중으로 표시된다', async () => {
+  it('작성 중 표현 도움은 기본 꺼짐이고 개인 설정으로 켤 수 있다', async () => {
     const user = userEvent.setup();
     await openSettings(user);
 
     const draftHelp = screen.getByLabelText(/작성 중 표현 도움/) as HTMLInputElement;
     expect(draftHelp).not.toBeChecked();
-    expect(draftHelp).toBeDisabled();
-    expect(screen.getByText('준비 중')).toBeInTheDocument();
+    expect(draftHelp).not.toBeDisabled();
+    expect(screen.queryByText('준비 중')).not.toBeInTheDocument();
+
+    await user.click(draftHelp);
+    expect(draftHelp).toBeChecked();
   });
 
   it('설정은 계정별로 분리된다 — 계정을 바꾸면 그 사람의 값이 보인다', async () => {

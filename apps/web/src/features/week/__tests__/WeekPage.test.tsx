@@ -307,7 +307,7 @@ describe('우리 탭 — 코칭 활용 중단이 두 계정 대화 화면에 반
     await switchAccount(user, /서연/);
     await user.click(screen.getByRole('button', { name: '대화' }));
     expect(
-      await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 }),
+      await screen.findByRole('button', { name: '코칭 카드 펼치기' }, { timeout: 2000 }),
     ).toBeInTheDocument();
 
     await switchAccount(user, /민준/);
@@ -359,7 +359,7 @@ describe('우리 탭 — 코칭 활용 중단이 두 계정 대화 화면에 반
     await user.click(within(headline()).getByRole('button', { name: '내 제외 해제' }));
     await user.click(screen.getByRole('button', { name: '대화' }));
     expect(
-      await screen.findByText('새로운 대화 힌트가 있어요', undefined, { timeout: 2000 }),
+      await screen.findByRole('button', { name: '코칭 카드 펼치기' }, { timeout: 2000 }),
     ).toBeInTheDocument();
   });
 

@@ -39,6 +39,9 @@ async function switchAccount(user: User, nickname: '민준' | '서연') {
   await user.click(switcher.getByRole('button', { name: new RegExp(nickname) }));
   await closeDevPanel(user);
 }
+async function expandSuggestions(user: User) {
+  await user.click(mem().getByRole('button', { name: /발견 더 보기/ }));
+}
 async function toggleRememberWhen(user: User, on: boolean) {
   await openDevPanel(user);
   await user.click(
@@ -395,9 +398,22 @@ describe('추억 — AI가 발견한 순간', () => {
     ).toBeInTheDocument();
   });
 
+  it('대표 발견 하나만 먼저 보이고 나머지는 펼쳐서 본다', async () => {
+    const user = renderApp();
+    await goTab(user, '추억');
+
+    // 대표(첫 제안)는 바로 보이고, 나머지는 접혀 있다.
+    expect(mem().getByText('이번엔 진짜 아무 계획 없이 훌쩍 떠나자')).toBeInTheDocument();
+    expect(mem().queryByText('고생했다 저녁은 먹었어?')).not.toBeInTheDocument();
+
+    await expandSuggestions(user);
+    expect(mem().getByText('고생했다 저녁은 먹었어?')).toBeInTheDocument();
+  });
+
   it('간직하기는 커플 공유 추억으로 저장하고, 그 제안은 목록에서 사라진다', async () => {
     const user = renderApp();
     await goTab(user, '추억');
+    await expandSuggestions(user);
 
     const card = mem().getByText('고생했다 저녁은 먹었어?').closest('article') as HTMLElement;
     await user.click(within(card).getByRole('button', { name: '간직하기' }));
@@ -419,6 +435,7 @@ describe('추억 — AI가 발견한 순간', () => {
   it("'숨기기'는 개인 적용이고, 추억 탭을 연 채 계정을 바꿔도 즉시 반영된다", async () => {
     const user = renderApp();
     await goTab(user, '추억');
+    await expandSuggestions(user);
 
     const card = mem().getByText('그렇구나. 오늘은 일단 좀 쉬자').closest('article') as HTMLElement;
     await user.click(within(card).getByRole('button', { name: '숨기기' }));

@@ -46,6 +46,11 @@
 @layer base {
   html {
     color-scheme: light;
+    /* 앱은 고정된 폰 프레임이라 창 스크롤바는 필요 없다. 스크롤 동작 자체는 그대로. */
+    scrollbar-width: none;
+  }
+  html::-webkit-scrollbar {
+    display: none;
   }
 
   body {
@@ -67,5 +72,13 @@
     font-weight: 600;
     letter-spacing: 0.08em;
     text-transform: uppercase;
+  }
+
+  /* 스크롤바만 시각적으로 감춘다 — 휠·터치·키보드 스크롤은 그대로 동작한다. */
+  .no-scrollbar {
+    scrollbar-width: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
   }
 }

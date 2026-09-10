@@ -56,6 +56,11 @@ export interface MemoriesService {
   listMemories(coupleId: string): Memory[];
   getMemory(coupleId: string, memoryId: string): Memory | undefined;
   findBySourceMessage(coupleId: string, messageId: string): Memory | undefined;
+  /**
+   * 저장소에 id가 없는 시드 추억만 덧붙인다(검토 도구 전용). 사용자가 저장·수정한 추억이나
+   * 이미 있는 시드는 건드리지 않는다 — 자동 파생이 아니라 리뷰어가 명시적으로 부르는 일회성 동작.
+   */
+  seedMissingMemories(coupleId: string): Memory[];
   saveMemory(input: SaveMemoryInput): Memory[];
   updateNote(input: UpdateNoteInput): Memory[];
   deleteMemory(input: DeleteMemoryInput): Memory[];
@@ -128,6 +133,25 @@ export function createMockMemoriesService(): MemoriesService {
 
     findBySourceMessage(coupleId, messageId) {
       return load(coupleId).find((memory) => memory.sourceMessageId === messageId);
+    },
+
+    seedMissingMemories(coupleId) {
+      const stored = load(coupleId);
+      const haveIds = new Set(stored.map((memory) => memory.id));
+      // sourceMessageId도 확인한다 — 예시를 지우고 같은 메시지를 사용자가 다시 저장했다면(다른 id로)
+      // 그 메시지는 이미 추억이 하나 있으므로 시드를 또 넣지 않는다(메시지당 추억 1개 규칙).
+      const haveSourceMessages = new Set(stored.map((memory) => memory.sourceMessageId));
+      const missing = SEED_MEMORIES.filter(
+        (memory) =>
+          memory.coupleId === coupleId &&
+          !haveIds.has(memory.id) &&
+          !haveSourceMessages.has(memory.sourceMessageId),
+      ).map((memory) => ({
+        ...memory,
+        images: memory.images ? memory.images.map((image) => ({ ...image })) : undefined,
+      }));
+      if (missing.length === 0) return sortBySavedNewest(stored);
+      return save(coupleId, [...stored, ...missing]);
     },
 
     saveMemory(input) {

@@ -16,12 +16,18 @@ export function DevPanel() {
 
   return (
     <>
+      {/*
+        상단 안내 줄(MockModeBanner, pr-28로 자리를 비워 둠) 오른쪽에 얹는다 —
+        입력창·전송 버튼(하단)과도, 화면 헤더의 홈 ⚙️·'우리' 상담 버튼과도 겹치지 않는다.
+      */}
       <button
         type="button"
         onClick={() => setOpen(true)}
-        className="absolute right-3 bottom-[calc(env(safe-area-inset-bottom)+72px)] z-20 flex items-center gap-1 rounded-full bg-ink px-3 py-2 text-xs text-canvas shadow-lg"
+        aria-label="검토 도구 열기"
+        className="absolute top-0.5 right-1.5 z-30 flex items-center gap-1 rounded-full bg-ink/90 px-2 py-1 text-[11px] font-medium text-canvas shadow-sm"
       >
-        <span aria-hidden="true">🛠️</span> 검토 도구
+        <span aria-hidden="true">🛠️</span>
+        <span className="eyebrow">검토</span>
       </button>
 
       {open && (
@@ -85,8 +91,13 @@ function AccountSwitcherSection() {
 }
 
 function MemoriesSection() {
-  const { suggestionsPresent, rememberWhenEnabled, setSuggestionsPresent, setRememberWhenEnabled } =
-    useMemories();
+  const {
+    suggestionsPresent,
+    rememberWhenEnabled,
+    setSuggestionsPresent,
+    setRememberWhenEnabled,
+    refillSeedMemories,
+  } = useMemories();
 
   return (
     <section>
@@ -138,6 +149,18 @@ function MemoriesSection() {
       <p className="mt-2 text-xs text-ink-soft">
         ‘그때의 우리’를 켜면 앨범의 예시 사진 추억을 기준으로 “100일 전 오늘” 리마인드가 떠요. 그
         추억을 삭제하면 켜도 뜨지 않아요. 실제 저장 날짜·목록 정렬에는 영향을 주지 않아요.
+      </p>
+
+      <button
+        type="button"
+        onClick={refillSeedMemories}
+        className="mt-3 w-full rounded-xl border border-border px-3 py-2 text-sm text-ink-soft"
+      >
+        예시 추억 채우기
+      </button>
+      <p className="mt-2 text-xs text-ink-soft">
+        저장소에 없는 예시 추억만 앨범에 다시 넣어요(초기화 없이 새 예시를 확인할 때). 직접
+        저장·수정한 추억이나 이미 있는 예시는 그대로예요. 일부러 지운 예시도 다시 나타날 수 있어요.
       </p>
     </section>
   );

@@ -16,8 +16,10 @@ import { CoachingArea } from './CoachingArea';
 import { MessageList } from './MessageList';
 import { EmptyChatState } from './EmptyChatState';
 import { MessageInputBar } from './MessageInputBar';
+import { DraftHelpHint } from './DraftHelpHint';
 import { OverwriteDraftDialog } from './OverwriteDraftDialog';
 import { SaveMemorySheet } from './SaveMemorySheet';
+import { applyDraftHelp, matchDraftHelp } from '../../mocks/domain/draftHelp';
 
 const coachingService = createMockCoachingService();
 
@@ -43,6 +45,7 @@ export function ChatPage() {
   const [isSending, setIsSending] = useState(false);
   const [coachingArea, setCoachingArea] = useState<CoachingAreaState>({ kind: 'loading' });
   const [draft, setDraft] = useState('');
+  const [isComposing, setIsComposing] = useState(false);
   const [pendingSuggestion, setPendingSuggestion] = useState<string | null>(null);
   const [memorySheet, setMemorySheet] = useState<{
     messageId: string;
@@ -92,10 +95,16 @@ export function ChatPage() {
   if (draftForAccountId !== account.id) {
     setDraftForAccountId(account.id);
     setDraft('');
+    setIsComposing(false);
     setPendingSuggestion(null);
     setMemorySheet(null);
     setMemoNote('');
   }
+
+  // 작성 중 표현 도움(개인 설정, 기본 꺼짐). 상대 대화를 보지 않고 지정 예시 문구만 대조한다 —
+  // 양측 분석 동의(coupleAnalysisActive)와 무관하게 동작하고, 한글 조합 중에는 갱신·표시하지 않는다.
+  const draftHelpMatch =
+    settings.mine.draftHelpEnabled && !isComposing ? matchDraftHelp(draft) : null;
 
   // 코칭 영역 상태 계산: 분석 동의/철회를 가장 먼저 확인한다 — 철회했다면 AI가 "준비 중"이든
   // 아니든 상관없이 곧바로 분석 중단 안내를 보여줘야 한다(동의 여부가 AI 가동 상태보다 우선).
@@ -207,6 +216,14 @@ export function ChatPage() {
     setDraft(text);
   }
 
+  function handleApplyDraftHelp() {
+    // 클릭 시점의 현재 초안 기준으로 대상 구간을 다시 확인한다(그 사이 입력이 바뀌었을 수 있다).
+    const fresh = matchDraftHelp(draft);
+    if (!fresh) return;
+    // 매칭된 첫 구간만 대체 — 확인 창 없이, 자동 전송 없이, 나머지 입력은 보존.
+    setDraft(applyDraftHelp(draft, fresh));
+  }
+
   function handleOpenMemoryMenu(messageId: string, trigger: HTMLElement) {
     setMemoNote('');
     setMemorySheet({ messageId, trigger });
@@ -262,11 +279,16 @@ export function ChatPage() {
         />
       )}
 
+      {draftHelpMatch && (
+        <DraftHelpHint example={draftHelpMatch.example} onApply={handleApplyDraftHelp} />
+      )}
+
       <MessageInputBar
         draft={draft}
         onDraftChange={setDraft}
         onSend={handleSend}
         disabled={isSending}
+        onCompositionChange={setIsComposing}
       />
 
       {pendingSuggestion && (

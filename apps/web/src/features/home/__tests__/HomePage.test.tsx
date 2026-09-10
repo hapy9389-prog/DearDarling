@@ -62,11 +62,44 @@ describe('홈 화면', () => {
     expect(screen.getByText('예시')).toBeInTheDocument();
   });
 
-  it('리포트 안내를 누르면 우리 탭으로 이동한다', async () => {
+  it('리포트 미리보기를 누르면 우리 탭으로 이동한다', async () => {
     const user = userEvent.setup();
     render(<App />);
 
-    await user.click(screen.getByText(/지난주 대화 리포트는 매주 월요일에 도착해요/));
+    await user.click(screen.getByRole('button', { name: '이번 주 우리 리포트 보기' }));
     expect(screen.getByText('이번 주 눈에 띈 우리 모습')).toBeInTheDocument();
+  });
+
+  it('기본 상태에서 이번 주 대표 발견 제목을 미리 보여준다', () => {
+    render(<App />);
+    expect(
+      screen.getByText(/이번 주 발견 · 무거운 대화를 한 번에 끝내지 않아요/),
+    ).toBeInTheDocument();
+  });
+
+  it('AI 준비 중·장애·발견 없음을 서로 다른 미리보기로 구분한다', async () => {
+    const user = userEvent.setup();
+    render(<App />);
+
+    await openDevPanel(user);
+    await user.click(screen.getByRole('button', { name: /AI 준비 중/ }));
+    await closeDevPanel(user);
+    expect(screen.getByText(/오늘 대화를 살펴보고 있어요/)).toBeInTheDocument();
+    expect(screen.getByText(/이번 주 리포트를 준비하고 있어요/)).toBeInTheDocument();
+
+    await openDevPanel(user);
+    await user.click(screen.getByRole('button', { name: /AI 장애/ }));
+    await closeDevPanel(user);
+    expect(screen.getByText(/지금은 오늘 요약을 불러올 수 없어요/)).toBeInTheDocument();
+    expect(screen.getByText(/지금은 리포트를 불러올 수 없어요/)).toBeInTheDocument();
+
+    await openDevPanel(user);
+    await user.click(screen.getByRole('button', { name: /^정상/ }));
+    await user.click(screen.getByRole('button', { name: '이번 주 발견 없음' }));
+    await closeDevPanel(user);
+    expect(screen.getByText(/이번 주는 특별히 눈에 띈 흐름은 없었어요/)).toBeInTheDocument();
+    expect(
+      screen.queryByText(/이번 주 발견 · 무거운 대화를 한 번에 끝내지 않아요/),
+    ).not.toBeInTheDocument();
   });
 });

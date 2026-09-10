@@ -9,7 +9,7 @@ import {
   groupBySavedDate,
   memoryCardLayout,
 } from '../../mocks/domain/memories';
-import type { Memory } from '../../mocks/types';
+import type { Memory, MemorySuggestion } from '../../mocks/types';
 import { ExampleImage } from './ExampleImage';
 import { MemoryDetail } from './MemoryDetail';
 
@@ -35,7 +35,7 @@ export function MemoriesPage() {
   const selected = selectedId ? (memories.find((m) => m.id === selectedId) ?? null) : null;
 
   return (
-    <div data-testid="memories-page" className="flex flex-1 flex-col overflow-y-auto">
+    <div data-testid="memories-page" className="no-scrollbar flex flex-1 flex-col overflow-y-auto">
       <header className="border-b border-border bg-canvas-raised px-4 py-3">
         <p className="font-display text-lg">추억</p>
       </header>
@@ -96,6 +96,10 @@ function SuggestedMoments({ onOpen }: { onOpen: (id: string) => void }) {
   const { scenario } = useScenario();
   const settings = useSettings();
   const { suggestions, keepSuggestion, hideSuggestion } = useMemories();
+  // 대표 하나를 먼저 보여 주고 나머지는 펼쳐 본다 — '우리 앨범'까지 과도하게 스크롤하지 않도록.
+  const [expanded, setExpanded] = useState(false);
+
+  const [primary, ...rest] = suggestions;
 
   return (
     <section>
@@ -116,52 +120,89 @@ function SuggestedMoments({ onOpen }: { onOpen: (id: string) => void }) {
         </p>
 
         <div className="mt-3 flex flex-col gap-3">
-          {suggestions.map((suggestion) => {
-            const sender = getAccount(suggestion.quoteSenderId);
-            return (
-              <article
-                key={suggestion.id}
-                className="rounded-2xl border border-coaching-border bg-coaching-soft px-4 py-3"
+          {primary && (
+            <SuggestionCard
+              suggestion={primary}
+              onKeep={keepSuggestion}
+              onHide={hideSuggestion}
+              onOpen={onOpen}
+            />
+          )}
+
+          {rest.length > 0 && (
+            <>
+              <button
+                type="button"
+                onClick={() => setExpanded((value) => !value)}
+                aria-expanded={expanded}
+                className="self-start text-xs font-medium text-accent"
               >
-                {suggestion.images && suggestion.images[0] && (
-                  <div className="mb-2">
-                    <ExampleImage image={suggestion.images[0]} size="card" />
-                  </div>
-                )}
-                <p className="border-l-2 border-coaching-border pl-2 text-sm leading-relaxed text-ink italic">
-                  {suggestion.quoteBody}
-                </p>
-                <p className="mt-2 text-xs leading-relaxed text-coaching">
-                  발견 이유 · {suggestion.reason}
-                </p>
-                <p className="mt-1 text-[11px] text-ink-faint">
-                  {sender.nickname} · {conversationDateLabel(suggestion.conversationAt)}
-                </p>
-                <div className="mt-3 flex gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      const saved = keepSuggestion(suggestion.id);
-                      if (saved) onOpen(saved.id);
-                    }}
-                    className="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-canvas-raised"
-                  >
-                    간직하기
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => hideSuggestion(suggestion.id)}
-                    className="rounded-full border border-border px-4 py-1.5 text-sm text-ink-soft"
-                  >
-                    숨기기
-                  </button>
-                </div>
-              </article>
-            );
-          })}
+                {expanded ? '발견 접기' : `발견 더 보기 · ${rest.length}`}
+              </button>
+              {expanded &&
+                rest.map((suggestion) => (
+                  <SuggestionCard
+                    key={suggestion.id}
+                    suggestion={suggestion}
+                    onKeep={keepSuggestion}
+                    onHide={hideSuggestion}
+                    onOpen={onOpen}
+                  />
+                ))}
+            </>
+          )}
         </div>
       </SuggestedBody>
     </section>
+  );
+}
+
+function SuggestionCard({
+  suggestion,
+  onKeep,
+  onHide,
+  onOpen,
+}: {
+  suggestion: MemorySuggestion;
+  onKeep: (id: string) => Memory | undefined;
+  onHide: (id: string) => void;
+  onOpen: (id: string) => void;
+}) {
+  const sender = getAccount(suggestion.quoteSenderId);
+  return (
+    <article className="rounded-2xl border border-coaching-border bg-coaching-soft px-4 py-3">
+      {suggestion.images && suggestion.images[0] && (
+        <div className="mb-2">
+          <ExampleImage image={suggestion.images[0]} size="card" />
+        </div>
+      )}
+      <p className="border-l-2 border-coaching-border pl-2 text-sm leading-relaxed whitespace-pre-wrap text-ink italic">
+        {suggestion.quoteBody}
+      </p>
+      <p className="mt-2 text-xs leading-relaxed text-coaching">발견 이유 · {suggestion.reason}</p>
+      <p className="mt-1 text-[11px] text-ink-faint">
+        {sender.nickname} · {conversationDateLabel(suggestion.conversationAt)}
+      </p>
+      <div className="mt-3 flex gap-2">
+        <button
+          type="button"
+          onClick={() => {
+            const saved = onKeep(suggestion.id);
+            if (saved) onOpen(saved.id);
+          }}
+          className="rounded-full bg-accent px-4 py-1.5 text-sm font-medium text-canvas-raised"
+        >
+          간직하기
+        </button>
+        <button
+          type="button"
+          onClick={() => onHide(suggestion.id)}
+          className="rounded-full border border-border px-4 py-1.5 text-sm text-ink-soft"
+        >
+          숨기기
+        </button>
+      </div>
+    </article>
   );
 }
 
@@ -271,7 +312,7 @@ function MemoryCard({ memory, onOpen }: { memory: Memory; onOpen: (id: string) =
       <button type="button" onClick={() => onOpen(memory.id)} className="block w-full text-left">
         <ExampleImage image={memory.images[0]} size="card" />
         {memory.note && <p className="mt-2 text-sm leading-relaxed text-ink">{memory.note}</p>}
-        <p className="mt-1 border-l-2 border-border pl-2 text-xs leading-relaxed text-ink-soft italic">
+        <p className="mt-1 border-l-2 border-border pl-2 text-xs leading-relaxed whitespace-pre-wrap text-ink-soft italic">
           {memory.quoteBody}
         </p>
         {meta}
@@ -285,7 +326,7 @@ function MemoryCard({ memory, onOpen }: { memory: Memory; onOpen: (id: string) =
       onClick={() => onOpen(memory.id)}
       className="block w-full rounded-xl border border-border bg-canvas-raised px-4 py-3 text-left"
     >
-      <p className="border-l-2 border-border pl-2 text-sm leading-relaxed text-ink italic">
+      <p className="border-l-2 border-border pl-2 text-sm leading-relaxed whitespace-pre-wrap text-ink italic">
         {memory.quoteBody}
       </p>
       {memory.note && <p className="mt-2 text-sm leading-relaxed text-ink-soft">{memory.note}</p>}

@@ -30,7 +30,7 @@ export function MessageBubble({
 
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
 
-  const bubbleClass = `max-w-[78%] rounded-2xl px-3.5 py-2 text-sm leading-relaxed transition-shadow ${
+  const bubbleClass = `max-w-[78%] whitespace-pre-wrap break-words rounded-2xl px-3.5 py-2 text-sm leading-relaxed transition-shadow ${
     isMine
       ? 'rounded-br-md bg-mine-bubble text-mine-bubble-text'
       : 'rounded-bl-md bg-partner-bubble text-partner-bubble-text'

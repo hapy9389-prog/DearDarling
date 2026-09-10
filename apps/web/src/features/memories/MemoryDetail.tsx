@@ -51,7 +51,7 @@ export function MemoryDetail({ memory, onBack }: { memory: Memory; onBack: () =>
         </div>
       )}
 
-      <blockquote className="border-l-2 border-border pl-3 text-base leading-relaxed text-ink italic">
+      <blockquote className="border-l-2 border-border pl-3 text-base leading-relaxed whitespace-pre-wrap text-ink italic">
         {memory.quoteBody}
       </blockquote>
 

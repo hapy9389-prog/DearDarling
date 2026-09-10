@@ -34,6 +34,11 @@ export interface CoachingSuggestion {
   coupleId: CoupleId;
   recipientId: UserId;
   insight: string;
+  /**
+   * 접힌 코칭 카드에 보여줄 짧은 요점 한 문장(선택). 긴 insight를 두 줄로 자르는 대신,
+   * 좁은 화면에서도 완결되는 문장을 쓴다. 없으면 화면이 insight를 최대 2줄로 방어한다.
+   */
+  headline?: string;
   evidenceText: string;
   evidenceMessageIds: MessageId[];
   alternatives: string[];

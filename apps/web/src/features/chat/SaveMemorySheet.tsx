@@ -130,7 +130,7 @@ export function SaveMemorySheet({
             <p className="font-display text-lg">추억으로 저장</p>
 
             <div className="mt-3 rounded-2xl border border-border bg-canvas px-4 py-3">
-              <p className="border-l-2 border-border pl-2 text-sm leading-relaxed text-ink italic">
+              <p className="border-l-2 border-border pl-2 text-sm leading-relaxed whitespace-pre-wrap text-ink italic">
                 {message.body}
               </p>
               <div className="mt-2 flex items-center gap-2 text-xs text-ink-faint">

@@ -222,3 +222,61 @@ describe('memoriesService — 그때의 우리', () => {
     expect(service.getRememberWhen(COUPLE_ID, SEOYEON)?.dismissKey).toBe(remind.dismissKey);
   });
 });
+
+describe('memoriesService — 예시 추억 채우기 (검토 도구)', () => {
+  it('저장소에 없는 시드 추억만 덧붙이고, 직접 저장·수정한 추억은 건드리지 않는다', () => {
+    // 사용자가 시드 추억 하나를 지우고, 대화에서 새 추억을 저장한 상태.
+    const seedToDelete = service.listMemories(COUPLE_ID)[0]!;
+    service.deleteMemory({
+      coupleId: COUPLE_ID,
+      memoryId: seedToDelete.id,
+      userId: seedToDelete.savedByUserId,
+    });
+    const own = service
+      .saveMemory({
+        coupleId: COUPLE_ID,
+        savedByUserId: MINJUN,
+        message: seedMessage('seed-msg-1'),
+        note: '내가 저장한 메모',
+      })
+      .find((m) => m.sourceMessageId === 'seed-msg-1')!;
+
+    const before = service.listMemories(COUPLE_ID);
+    const refilled = service.seedMissingMemories(COUPLE_ID);
+
+    // 지웠던 시드는 다시 들어오고, 내가 저장한 추억은 그대로(중복 없이).
+    expect(refilled.some((m) => m.id === seedToDelete.id)).toBe(true);
+    expect(refilled.filter((m) => m.id === own.id)).toHaveLength(1);
+    expect(refilled.find((m) => m.id === own.id)?.note).toBe('내가 저장한 메모');
+    expect(refilled.length).toBe(before.length + 1);
+
+    // 다시 불러도 이미 있는 시드를 중복 추가하지 않는다.
+    expect(service.seedMissingMemories(COUPLE_ID).length).toBe(refilled.length);
+  });
+
+  it('예시 추억을 지우고 같은 메시지를 다시 저장한 뒤 채워도 추억은 하나이고 내 메모가 유지된다', () => {
+    const seed = service.listMemories(COUPLE_ID).find((m) => m.sourceMessageId === 'seed-msg-4')!;
+    service.deleteMemory({
+      coupleId: COUPLE_ID,
+      memoryId: seed.id,
+      userId: seed.savedByUserId,
+    });
+
+    // 사용자가 같은 원본 메시지를 새로 저장(새 id + 새 메모).
+    service.saveMemory({
+      coupleId: COUPLE_ID,
+      savedByUserId: SEOYEON,
+      message: seedMessage('seed-msg-4'),
+      note: '다시 저장하며 새로 쓴 메모',
+    });
+
+    service.seedMissingMemories(COUPLE_ID);
+
+    const forMessage = service
+      .listMemories(COUPLE_ID)
+      .filter((m) => m.sourceMessageId === 'seed-msg-4');
+    expect(forMessage).toHaveLength(1);
+    expect(forMessage[0]!.note).toBe('다시 저장하며 새로 쓴 메모');
+    expect(forMessage[0]!.savedByUserId).toBe(SEOYEON);
+  });
+});
