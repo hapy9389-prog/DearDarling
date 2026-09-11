@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
-import { buildTestApp } from '../helpers/app';
+import { buildTestApp, TEST_ALLOWED_ORIGIN } from '../helpers/app';
 import { resetTables, getTestPool } from '../helpers/db';
 import { createUser } from '../../src/repositories/usersRepository';
 import {
@@ -28,11 +28,13 @@ describe('consent API', () => {
     await request(app)
       .put('/api/consent')
       .set('X-Test-User-Id', user.id)
+      .set('Origin', TEST_ALLOWED_ORIGIN)
       .send({ granted: true })
       .expect(200);
     await request(app)
       .put('/api/consent')
       .set('X-Test-User-Id', user.id)
+      .set('Origin', TEST_ALLOWED_ORIGIN)
       .send({ granted: false })
       .expect(200);
 
@@ -60,11 +62,17 @@ describe('consent API', () => {
       await request(app)
         .put('/api/consent')
         .set('X-Test-User-Id', user.id)
+        .set('Origin', TEST_ALLOWED_ORIGIN)
         .send({ granted: invalid })
         .expect(400);
     }
     // granted 필드 자체가 없는 경우도 거부한다.
-    await request(app).put('/api/consent').set('X-Test-User-Id', user.id).send({}).expect(400);
+    await request(app)
+      .put('/api/consent')
+      .set('X-Test-User-Id', user.id)
+      .set('Origin', TEST_ALLOWED_ORIGIN)
+      .send({})
+      .expect(400);
 
     const profile = await request(app)
       .get('/api/profile')

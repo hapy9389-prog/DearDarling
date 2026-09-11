@@ -2,18 +2,22 @@ import type { Pool, PoolClient } from 'pg';
 
 export interface UserRow {
   id: string;
-  email: string;
+  email: string | null;
   nickname: string | null;
   avatar_emoji: string | null;
   couple_id: string | null;
   analysis_consent: boolean;
   is_seed: boolean;
+  note: string | null;
+  auth_locked_at: Date | null;
+  cognito_sub: string | null;
+  auth_version: number;
   created_at: Date;
 }
 
 type Queryable = Pick<Pool | PoolClient, 'query'>;
 
-/** 로컬 테스트 모드 전용 진입점(src/routes/testUsers.ts)에서만 호출된다 — 실제 가입은 아직 없다. */
+/** 로컬 테스트 모드 전용 진입점(src/routes/testUsers.ts)·테스트 헬퍼에서만 호출된다. */
 export async function createUser(db: Queryable, email: string): Promise<UserRow> {
   const { rows } = await db.query<UserRow>('INSERT INTO users (email) VALUES ($1) RETURNING *', [
     email,
@@ -25,6 +29,11 @@ export async function createUser(db: Queryable, email: string): Promise<UserRow>
 
 export async function findUserById(db: Queryable, id: string): Promise<UserRow | null> {
   const { rows } = await db.query<UserRow>('SELECT * FROM users WHERE id = $1', [id]);
+  return rows[0] ?? null;
+}
+
+export async function findUserByEmail(db: Queryable, email: string): Promise<UserRow | null> {
+  const { rows } = await db.query<UserRow>('SELECT * FROM users WHERE email = $1', [email]);
   return rows[0] ?? null;
 }
 

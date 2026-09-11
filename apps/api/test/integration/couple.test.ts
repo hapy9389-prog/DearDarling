@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import request from 'supertest';
-import { buildTestApp } from '../helpers/app';
+import { buildTestApp, TEST_ALLOWED_ORIGIN } from '../helpers/app';
 import { resetTables, getTestPool } from '../helpers/db';
 import { createUser } from '../../src/repositories/usersRepository';
 import { createInvite, acceptInvite } from '../../src/services/inviteService';
@@ -35,6 +35,7 @@ describe('couple API', () => {
     const updated = await request(app)
       .patch('/api/couple')
       .set('X-Test-User-Id', accepter.id)
+      .set('Origin', TEST_ALLOWED_ORIGIN)
       .send({ relationshipStartDate: '2024-06-15' })
       .expect(200);
     expect(updated.body.relationship_start_date).toBe('2024-06-15');
@@ -51,6 +52,7 @@ describe('couple API', () => {
     const res = await request(app)
       .patch('/api/couple')
       .set('X-Test-User-Id', accepter.id)
+      .set('Origin', TEST_ALLOWED_ORIGIN)
       .send({}) // relationshipStartDate 필드 자체가 없음
       .expect(200);
     expect(res.body.relationship_start_date).toBe('2025-01-01');
@@ -67,6 +69,7 @@ describe('couple API', () => {
     const res = await request(app)
       .patch('/api/couple')
       .set('X-Test-User-Id', accepter.id)
+      .set('Origin', TEST_ALLOWED_ORIGIN)
       .send({ relationshipStartDate: null })
       .expect(200);
     expect(res.body.relationship_start_date).toBeNull();
@@ -84,6 +87,7 @@ describe('couple API', () => {
       await request(app)
         .patch('/api/couple')
         .set('X-Test-User-Id', accepter.id)
+        .set('Origin', TEST_ALLOWED_ORIGIN)
         .send({ relationshipStartDate: invalid })
         .expect(400);
     }

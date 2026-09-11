@@ -1,6 +1,6 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
-import { buildTestApp } from '../helpers/app';
+import { buildTestApp, TEST_ALLOWED_ORIGIN } from '../helpers/app';
 import { getTestPool, resetTables } from '../helpers/db';
 import { createUser } from '../../src/repositories/usersRepository';
 import { createInvite, acceptInvite, InviteAcceptFailure } from '../../src/services/inviteService';
@@ -151,6 +151,7 @@ describe('invite + couple connection', () => {
     await request(app)
       .post(`/api/invites/${invite.code}/accept`)
       .set('X-Test-User-Id', accepter.id)
+      .set('Origin', TEST_ALLOWED_ORIGIN)
       .send({ relationshipStartDate: '2025-02-30' })
       .expect(400);
 
@@ -173,6 +174,7 @@ describe('invite + couple connection', () => {
     await request(app)
       .post(`/api/invites/${invite.code}/accept`)
       .set('X-Test-User-Id', accepter.id)
+      .set('Origin', TEST_ALLOWED_ORIGIN)
       .send({ relationshipStartDate: '2025-01-01' })
       .expect(200);
 
