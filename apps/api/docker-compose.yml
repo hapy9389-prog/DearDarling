@@ -1,0 +1,15 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    # 로컬 개발 전용 — 127.0.0.1에만 바인딩해 외부에 노출하지 않는다.
+    ports:
+      - '127.0.0.1:5432:5432'
+    environment:
+      POSTGRES_USER: deardarling
+      POSTGRES_PASSWORD: deardarling_local_dev
+      POSTGRES_DB: deardarling_dev
+    volumes:
+      - deardarling_pg_data:/var/lib/postgresql/data
+
+volumes:
+  deardarling_pg_data:
