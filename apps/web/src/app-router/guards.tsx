@@ -39,9 +39,10 @@ export function RedirectIfAuthed() {
 }
 
 /**
- * 실제 계정(`kind: 'real'`)은 초대·동의·`/app/*`(가상 커플 데이터를 전제로 하는 화면)로 들어갈
- * 수 없다 — 이번 범위는 프로필까지다. 프로필에 이미 coupleId가 들어 있어도(다음 단계 연결 이후)
- * 예외 없이 `/real/*`로 되돌린다. 직접 URL 접근도 막는다.
+ * 실제 계정(`kind: 'real'`)은 mock(가상) 초대·동의·`/app/*`(가상 커플 데이터를 전제로 하는
+ * 화면)로 들어갈 수 없다 — 실제 계정용 초대·커플·동의는 `/real/*` 아래 별도 화면으로만 연결돼
+ * 있다(`RequireRealAccount` 참고). 연결됐어도(coupleId 있어도) 예외 없이 `/real/*`로 되돌린다.
+ * 직접 URL 접근도 막는다.
  */
 export function BlockRealAccounts() {
   const { session, status } = useSession();
@@ -53,5 +54,22 @@ export function BlockRealAccounts() {
 export function RequireRealAccount() {
   const { session, status } = useSession();
   if (session?.kind !== 'real') return <Navigate to={landingPathFor(status)} replace />;
+  return <Outlet />;
+}
+
+/** 실제 계정인데 닉네임을 아직 안 정했으면 프로필 화면으로 — `RequireProfileComplete`의
+ * real 버전. `/real/connect`류·`/real/consent`가 이 아래에 물려 있어야 한다. */
+export function RequireRealProfileComplete() {
+  const { status } = useSession();
+  if (status === 'real-incomplete') return <Navigate to="/real/profile" replace />;
+  return <Outlet />;
+}
+
+/** 이미 커플로 연결된 실제 계정은 `/real/connect`·`/real/connect/join`(초대 만들기/받기)
+ * 대신 홈으로 되돌린다. `/real/consent`는 연결 여부와 무관하게 계속 접근 가능해야 하므로(동의는
+ * 언제든 저장·철회할 수 있어야 한다) 이 가드 아래 두지 않는다. */
+export function RedirectIfRealConnected() {
+  const { status } = useSession();
+  if (status === 'real-connected') return <Navigate to="/real/home" replace />;
   return <Outlet />;
 }

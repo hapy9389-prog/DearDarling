@@ -33,6 +33,43 @@ interface PgErrorLike {
   constraint?: string;
 }
 
+/**
+ * 초대 자체의 상태만으로 판정 가능한 부분(존재·취소·이미 사용·만료·본인 여부) — 순수 함수라
+ * DB 접근이 없다. **`couple_id`(연결 가능 여부)는 여기서 다루지 않는다** — `acceptInvite`에서
+ * 이 값을 어느 시점에 읽는지(사용자 행을 잠그기 전/후)가 동시성 안전성에 직결되므로, 그 시점
+ * 결정은 호출부에 남겨 둔다(아래 `evaluateConnectability` 참고). `accept`와 `preview` 둘 다
+ * 이 함수로 같은 규칙을 공유한다.
+ */
+export function evaluateInviteState(
+  invite: InviteRow | undefined,
+  viewerUserId: string,
+  now: number = Date.now(),
+): InviteAcceptReason | 'ok' {
+  if (!invite) return 'not-found';
+  if (invite.status === 'revoked') return 'revoked';
+  if (invite.status === 'accepted') return 'already-accepted';
+  if (invite.status === 'expired' || invite.expires_at.getTime() <= now) return 'expired';
+  if (invite.inviter_user_id === viewerUserId) return 'self';
+  return 'ok';
+}
+
+/**
+ * 두 당사자의 `couple_id`만으로 연결 가능 여부를 판정하는 순수 함수. **호출부가 이 값을 언제
+ * 읽었는지가 안전성을 좌우한다** — `acceptInvite`는 반드시 두 사용자 행을 `FOR UPDATE`로 잠근
+ * *뒤에* 읽은 값만 여기 넘겨야 한다(잠그기 전에 읽은 값을 최종 판단에 쓰면 그 사이 다른
+ * 트랜잭션이 연결을 끝내는 경합을 놓친다). `previewInvite`는 잠그지 않고 읽은 값을 그대로
+ * 쓰는데, 이는 참고용 미리보기일 뿐이고 실제 연결 여부는 accept의 잠금 안에서 다시 확정되기
+ * 때문에 의도적으로 허용한다(요청 사항: accept는 항상 자기 트랜잭션에서 다시 검증한다).
+ */
+export function evaluateConnectability(
+  inviterCoupleId: string | null,
+  viewerCoupleId: string | null,
+): 'inviter-already-connected' | 'accepter-already-connected' | 'ok' {
+  if (inviterCoupleId) return 'inviter-already-connected';
+  if (viewerCoupleId) return 'accepter-already-connected';
+  return 'ok';
+}
+
 const UNIQUE_VIOLATION = '23505';
 // 부분 유니크 인덱스(사용자당 활성 초대 1개) 위반 — DB 스키마의 이름과 반드시 일치해야 한다.
 const ONE_PENDING_PER_INVITER_CONSTRAINT = 'invites_one_pending_per_inviter';
@@ -162,26 +199,35 @@ export async function acceptInvite(
         [code],
       );
       const invite = inviteRows[0];
-      if (!invite) throw new InviteAcceptFailure('not-found');
-      if (invite.status === 'revoked') throw new InviteAcceptFailure('revoked');
-      if (invite.status === 'accepted') throw new InviteAcceptFailure('already-accepted');
-      if (invite.status === 'expired' || invite.expires_at.getTime() <= Date.now()) {
-        if (invite.status === 'pending') {
+      // 초대 자체의 상태만 우선 판정한다(couple_id는 아직 안 본다 — 사용자 행을 잠그기 전이다).
+      const stateReason = evaluateInviteState(invite, accepterUserId);
+      if (stateReason !== 'ok') {
+        // 만료를 감지했을 때 상태를 갱신하는 부수효과는 기존과 동일하게 유지한다 — 다만 이
+        // 트랜잭션이 실패로 끝나 곧바로 ROLLBACK되므로(catch 블록), 이 UPDATE는 실제로는 커밋되지
+        // 않는다(기존부터 그랬다 — 이번 리팩터로 새로 생긴 동작이 아니다). "만료로 거절됐다"는
+        // `expires_at` 기준 판정 자체이지, DB에 `status='expired'`가 영구 기록됐다는 뜻이 아니다.
+        if (stateReason === 'expired' && invite?.status === 'pending') {
           await client.query(`UPDATE invites SET status = 'expired' WHERE id = $1`, [invite.id]);
         }
-        throw new InviteAcceptFailure('expired');
+        throw new InviteAcceptFailure(stateReason);
       }
-      if (invite.inviter_user_id === accepterUserId) throw new InviteAcceptFailure('self');
+      // stateReason === 'ok'는 invite가 존재할 때만 나온다(evaluateInviteState 참고).
+      const confirmedInvite = invite!;
 
-      const [firstId, secondId] = [invite.inviter_user_id, accepterUserId].sort();
+      const [firstId, secondId] = [confirmedInvite.inviter_user_id, accepterUserId].sort();
       const { rows: lockedUsers } = await client.query<{ id: string; couple_id: string | null }>(
         'SELECT id, couple_id FROM users WHERE id IN ($1, $2) ORDER BY id FOR UPDATE',
         [firstId, secondId],
       );
-      const inviterRow = lockedUsers.find((u) => u.id === invite.inviter_user_id);
+      const inviterRow = lockedUsers.find((u) => u.id === confirmedInvite.inviter_user_id);
       const accepterRow = lockedUsers.find((u) => u.id === accepterUserId);
-      if (inviterRow?.couple_id) throw new InviteAcceptFailure('inviter-already-connected');
-      if (accepterRow?.couple_id) throw new InviteAcceptFailure('accepter-already-connected');
+      // couple_id는 반드시 위 FOR UPDATE로 두 사용자 행을 잠근 뒤 읽은 값만 쓴다 — 잠그기 전
+      // 값을 쓰면 그 사이 다른 트랜잭션이 연결을 끝내는 경합을 놓친다.
+      const connReason = evaluateConnectability(
+        inviterRow?.couple_id ?? null,
+        accepterRow?.couple_id ?? null,
+      );
+      if (connReason !== 'ok') throw new InviteAcceptFailure(connReason);
 
       const { rows: coupleRows } = await client.query<{ id: string }>(
         'INSERT INTO couples (relationship_start_date) VALUES ($1) RETURNING id',
@@ -192,7 +238,7 @@ export async function acceptInvite(
 
       const { rowCount } = await client.query(
         'UPDATE users SET couple_id = $1 WHERE id IN ($2, $3) AND couple_id IS NULL',
-        [coupleId, invite.inviter_user_id, accepterUserId],
+        [coupleId, confirmedInvite.inviter_user_id, accepterUserId],
       );
       if (rowCount !== 2) {
         // 서로 다른 초대 코드로 같은 사용자를 동시에 연결하려던 경합 — 안전망으로 감지·차단.
@@ -202,13 +248,13 @@ export async function acceptInvite(
       await client.query(
         `UPDATE invites SET status = 'accepted', accepted_by_user_id = $2, accepted_at = now()
          WHERE id = $1`,
-        [invite.id, accepterUserId],
+        [confirmedInvite.id, accepterUserId],
       );
       // 연결 완료 후 양쪽의 남은 활성 초대를 모두 무효화한다.
       await client.query(
         `UPDATE invites SET status = 'revoked'
          WHERE inviter_user_id IN ($1, $2) AND status = 'pending' AND id <> $3`,
-        [invite.inviter_user_id, accepterUserId, invite.id],
+        [confirmedInvite.inviter_user_id, accepterUserId, confirmedInvite.id],
       );
 
       await client.query('COMMIT');
@@ -220,4 +266,50 @@ export async function acceptInvite(
       client.release();
     }
   });
+}
+
+export interface InvitePreview {
+  inviter_nickname: string | null;
+  inviter_avatar_emoji: string | null;
+}
+
+/**
+ * 초대 코드 미리보기 — 로그인한 사용자가 수락하기 전에 초대자 닉네임·아바타만 확인한다.
+ * **잠금(FOR UPDATE)도, 쓰기도 하지 않는다** — 조회만으로 초대를 사용 처리하거나 커플을
+ * 연결하지 않는다는 것을 코드 구조로 보장한다. 여기서 읽는 `couple_id`는 잠그지 않은 값이라
+ * 이 순간 이후 취소·만료·다른 사용자 수락이 일어날 수 있다 — 실제 연결 가능 여부는
+ * `acceptInvite`가 자기 트랜잭션 안에서 다시(잠근 뒤) 검증한다.
+ */
+export async function previewInvite(
+  pool: Pool,
+  rawCode: string,
+  viewerUserId: string,
+): Promise<InvitePreview> {
+  const code = normalizeCode(rawCode);
+  const { rows: inviteRows } = await pool.query<InviteRow>('SELECT * FROM invites WHERE code = $1', [
+    code,
+  ]);
+  const invite = inviteRows[0];
+  const stateReason = evaluateInviteState(invite, viewerUserId);
+  if (stateReason !== 'ok') throw new InviteAcceptFailure(stateReason);
+  const confirmedInvite = invite!;
+
+  const { rows: userRows } = await pool.query<{
+    id: string;
+    couple_id: string | null;
+    nickname: string | null;
+    avatar_emoji: string | null;
+  }>('SELECT id, couple_id, nickname, avatar_emoji FROM users WHERE id IN ($1, $2)', [
+    confirmedInvite.inviter_user_id,
+    viewerUserId,
+  ]);
+  const inviterRow = userRows.find((u) => u.id === confirmedInvite.inviter_user_id);
+  const viewerRow = userRows.find((u) => u.id === viewerUserId);
+  const connReason = evaluateConnectability(inviterRow?.couple_id ?? null, viewerRow?.couple_id ?? null);
+  if (connReason !== 'ok') throw new InviteAcceptFailure(connReason);
+
+  return {
+    inviter_nickname: inviterRow?.nickname ?? null,
+    inviter_avatar_emoji: inviterRow?.avatar_emoji ?? null,
+  };
 }

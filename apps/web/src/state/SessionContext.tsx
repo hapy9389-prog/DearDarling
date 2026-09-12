@@ -16,6 +16,10 @@ import { devKey, readJSON, trialKey, writeJSON } from '../mocks/storage';
 import * as authApi from '../api/authApi';
 import * as profileApi from '../api/profileApi';
 import { toRealProfile, type RealProfile } from '../api/profileApi';
+import * as inviteApi from '../api/inviteApi';
+import * as coupleApi from '../api/coupleApi';
+import { toRealCouple, type RealCouple } from '../api/coupleApi';
+import * as consentApi from '../api/consentApi';
 
 /**
  * 누가 어떤 자격으로 앱을 보고 있는지(0010, 이후 실제 계정 연결로 확장).
@@ -44,7 +48,12 @@ export type SessionStatus =
   | 'trial-connected'
   | 'review'
   | 'real-incomplete'
-  | 'real-home';
+  /** 프로필은 완료했지만 아직 커플로 연결되지 않음 — `/real/home`이 안에서 "연결하기" 안내를
+   * 보여준다(별도 경로로 리다이렉트하지 않는다 — 기존 의미를 그대로 유지). */
+  | 'real-home'
+  /** 프로필 완료 + 커플 연결까지 끝남 — `/real/home`으로 가는 건 위와 같지만, `RedirectIfReal
+   * Connected` 가드가 `/real/connect`류에서 이 상태만 되돌린다. */
+  | 'real-connected';
 
 const authService = createMockAuthService();
 const SESSION_KEY = trialKey('session');
@@ -63,6 +72,7 @@ export function landingPathFor(status: SessionStatus): string {
     case 'real-incomplete':
       return '/real/profile';
     case 'real-home':
+    case 'real-connected':
       return '/real/home';
     default:
       return '/';
@@ -94,6 +104,215 @@ export type AuthCallResult =
 
 const RATE_LIMITED_MESSAGE = '요청이 많습니다. 잠시 후 다시 시도해 주세요.';
 const NETWORK_ERROR_MESSAGE = '연결에 실패했습니다. 네트워크 상태를 확인한 뒤 다시 시도해 주세요.';
+/** 초대 수락 중 5xx를 받았지만 outcome에 message가 없을 때의 대체 문구 — "실패"가 아니라
+ * "확인 필요"로 안내한다(성공·실패 어느 쪽도 단정하지 않는다). */
+const SERVER_ERROR_MESSAGE = '연결 결과를 확인하지 못했습니다. 다시 확인해 주세요.';
+/** 이미 로그인한 세션으로 보호된 API를 부르다가 401을 받았을 때 — 화면이 로그인 화면으로
+ * 안내할 때 공통으로 쓰는 문구. */
+export const SESSION_EXPIRED_MESSAGE = '로그인이 만료됐습니다. 다시 로그인해 주세요.';
+
+/** 초대 수락 실패 사유 — `apps/api`의 `InviteAcceptReason`과 문자 그대로 일치한다(미리보기·
+ * 수락 둘 다 같은 사유를 쓴다). */
+export type InviteReason =
+  | 'not-found'
+  | 'expired'
+  | 'revoked'
+  | 'already-accepted'
+  | 'self'
+  | 'accepter-already-connected'
+  | 'inviter-already-connected';
+
+const INVITE_REASONS = new Set<string>([
+  'not-found',
+  'expired',
+  'revoked',
+  'already-accepted',
+  'self',
+  'accepter-already-connected',
+  'inviter-already-connected',
+]);
+function isInviteReason(value: string): value is InviteReason {
+  return INVITE_REASONS.has(value);
+}
+
+export const INVITE_REASON_MESSAGE: Record<InviteReason, string> = {
+  'not-found': '유효하지 않은 코드예요.',
+  expired: '만료된 코드예요. 상대에게 새 코드를 받아 주세요.',
+  revoked: '취소된 코드예요.',
+  'already-accepted': '이미 사용된 코드예요.',
+  self: '본인 코드예요.',
+  'accepter-already-connected': '이미 다른 사람과 연결돼 있어요.',
+  'inviter-already-connected': '상대가 이미 다른 사람과 연결돼 있어요.',
+};
+
+/** 초대 코드 발급(멱등 — 이미 활성 초대가 있으면 그걸 그대로 돌려준다) 결과. */
+export type InviteCreateResult =
+  | { kind: 'ok'; code: string; expiresAt: string }
+  | { kind: 'already-connected'; message: string }
+  | { kind: 'unknown'; message: string }
+  | { kind: 'unauthenticated' }
+  | { kind: 'rate-limited' }
+  | { kind: 'network-error' }
+  | { kind: 'origin-not-allowed'; message: string }
+  | { kind: 'server-error'; message: string }
+  | { kind: 'rejected'; message: string };
+
+/** 초대 코드 미리보기(로그인 필요, 조회만 — 사용 처리·연결 없음) 결과. */
+export type InvitePreviewResult =
+  | { kind: 'ok'; nickname: string; avatarEmoji: string }
+  | { kind: 'invite-rejected'; reason: InviteReason }
+  | { kind: 'unauthenticated' }
+  | { kind: 'rate-limited' }
+  | { kind: 'network-error' }
+  | { kind: 'origin-not-allowed'; message: string }
+  | { kind: 'server-error'; message: string }
+  | { kind: 'rejected'; message: string };
+
+/** 초대 수락 결과 — 수락 자체의 확정 성공/실패와, 수락 뒤 로컬 정보 반영 실패를 구분한다. */
+export type InviteAcceptResult =
+  | { kind: 'ok'; coupleId: string }
+  /** 수락은 서버에서 확정 성공했다 — 그 뒤 프로필 재조회만 실패했다. "수락 실패"로 표시하지
+   * 않는다. 재시도는 조회만 다시 하면 된다(수락 POST를 다시 보내지 않는다). */
+  | { kind: 'connected-refresh-failed'; coupleId: string }
+  /** 수락 요청 자체의 결과가 미확정(202/503, 또는 응답만 유실됐을 수 있는 네트워크 오류)이고,
+   * 재조회로도 연결 여부를 확인하지 못했다. 수락 POST를 무조건 반복하지 않는다 — 재확인
+   * (재조회)만 다시 시도할 수 있게 안내한다. */
+  | { kind: 'unconfirmed'; message: string }
+  | { kind: 'invite-rejected'; reason: InviteReason }
+  | { kind: 'invalid-date'; message: string }
+  | { kind: 'unauthenticated' }
+  | { kind: 'rate-limited' }
+  | { kind: 'network-error' }
+  | { kind: 'origin-not-allowed'; message: string }
+  | { kind: 'server-error'; message: string }
+  | { kind: 'rejected'; message: string };
+
+export type InviteRevokeResult =
+  | { kind: 'ok' }
+  | { kind: 'unauthenticated' }
+  | { kind: 'rate-limited' }
+  | { kind: 'network-error' }
+  | { kind: 'origin-not-allowed'; message: string }
+  | { kind: 'server-error'; message: string }
+  | { kind: 'rejected'; message: string };
+
+export type CoupleFetchResult =
+  | { kind: 'ok'; couple: RealCouple }
+  | { kind: 'not-connected' }
+  | { kind: 'unauthenticated' }
+  | { kind: 'rate-limited' }
+  | { kind: 'network-error' }
+  | { kind: 'server-error'; message: string }
+  | { kind: 'rejected'; message: string };
+
+/** 동의 저장/철회 결과 — 200 확정 성공에서만 로컬 상태(`realUser.analysisConsent`)를
+ * 반영한다. 미확정(202/503)이면 로컬 값을 그대로 두고 재확인이 필요함을 알린다. */
+export type ConsentSetResult =
+  | { kind: 'ok'; granted: boolean }
+  | { kind: 'unknown'; message: string }
+  | { kind: 'unauthenticated' }
+  | { kind: 'rate-limited' }
+  | { kind: 'network-error' }
+  | { kind: 'origin-not-allowed'; message: string }
+  | { kind: 'server-error'; message: string }
+  | { kind: 'rejected'; message: string };
+
+/** 프로필 재조회 결과 — 성공·세션 만료·네트워크/서버 오류·(그 사이 세션이 바뀌어) 무효화된
+ * 요청을 구분한다. "다시 확인" 류 UI는 이 결과로만 다음 화면을 결정해야 한다(실패를 성공처럼
+ * 넘기거나, 이전 값을 최신 확정값처럼 보여주지 않는다). */
+export type ProfileRefreshResult =
+  | { kind: 'ok'; profile: RealProfile }
+  | { kind: 'unauthenticated' }
+  | { kind: 'rate-limited' }
+  | { kind: 'network-error' }
+  | { kind: 'server-error'; message: string }
+  /** 조회가 끝나기 전에 세션이 바뀌었다(로그아웃·계정 전환 등) — 이 결과는 이제 아무 화면과도
+   * 무관하니 호출부가 조용히 버려야 한다. */
+  | { kind: 'stale' };
+
+/** rejected 상태의 outcome에서 origin-not-allowed(403)·서버 오류(5xx)만 공통으로 뽑아낸다 —
+ * 초대·커플·동의 API 전부 이 두 경우는 같은 방식으로 안내한다. 둘 다 아니면 null. */
+function commonRejectionKind(outcome: {
+  status: number;
+  error: string;
+}): { kind: 'origin-not-allowed'; message: string } | { kind: 'server-error'; message: string } | null {
+  if (outcome.status === 403 && outcome.error === 'origin-not-allowed') {
+    return {
+      kind: 'origin-not-allowed',
+      message: '이 주소에서는 요청할 수 없습니다. 접속 주소나 서버 설정을 확인해 주세요.',
+    };
+  }
+  if (outcome.status >= 500) {
+    return {
+      kind: 'server-error',
+      message: '서버에서 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+    };
+  }
+  return null;
+}
+
+/**
+ * 초대 수락이 "진행 중"이거나 "결과가 확정되지 않은" 동안의 최소 기록 — 계정(userId)별로
+ * localStorage에 남겨 화면 재진입·새로고침에도 복원한다. **비밀번호·인증 코드·토큰은 절대
+ * 담지 않는다** — `code`는 초대 코드(공유용, 인증 정보가 아니다)일 뿐이다.
+ *  - `accepting`: 요청을 보낸 뒤 응답을 기다리는 동안(요청 도중 새로고침하면 그 응답을 다시
+ *    받을 방법이 없으므로, 복원 시에는 `unconfirmed`와 동일하게 다룬다).
+ *  - `connected-refresh-failed`: 서버가 연결을 확정 성공시켰지만 그 직후 내 정보 재조회만
+ *    실패했다.
+ *  - `unconfirmed`: 수락 결과 자체가 미확정이다.
+ * 연결이 실제로 확인되거나(coupleId 확인) 서버가 확정 거절하면 이 기록을 지운다 — 그 외의
+ * 실패(조회 실패·요청 제한 등)만으로는 지우지 않는다(아래 realAcceptInvite 참고).
+ */
+export interface PendingInviteAccept {
+  code: string;
+  relationshipStartDate: string | null;
+  phase: 'accepting' | 'connected-refresh-failed' | 'unconfirmed';
+}
+
+const PENDING_INVITE_ACCEPT_KEY_PREFIX = 'deardarling:web:v1:pending-invite-accept:';
+
+function pendingInviteAcceptKey(userId: string): string {
+  return `${PENDING_INVITE_ACCEPT_KEY_PREFIX}${userId}`;
+}
+
+function readPendingInviteAccept(userId: string): PendingInviteAccept | null {
+  try {
+    const raw = window.localStorage.getItem(pendingInviteAcceptKey(userId));
+    if (!raw) return null;
+    const parsed: unknown = JSON.parse(raw);
+    if (
+      parsed &&
+      typeof parsed === 'object' &&
+      typeof (parsed as { code?: unknown }).code === 'string' &&
+      ((parsed as { relationshipStartDate?: unknown }).relationshipStartDate === null ||
+        typeof (parsed as { relationshipStartDate?: unknown }).relationshipStartDate === 'string') &&
+      ['accepting', 'connected-refresh-failed', 'unconfirmed'].includes(
+        (parsed as { phase?: unknown }).phase as string,
+      )
+    ) {
+      return parsed as PendingInviteAccept;
+    }
+    return null; // 예상 밖 형태 — 신뢰하지 않고 무시한다
+  } catch {
+    return null;
+  }
+}
+
+function writePendingInviteAccept(userId: string, record: PendingInviteAccept): void {
+  try {
+    window.localStorage.setItem(pendingInviteAcceptKey(userId), JSON.stringify(record));
+  } catch {
+    // 접근이 막힌 환경 — 이 세션 안에서는 화면 상태(반응형 값)로 여전히 동작한다.
+  }
+}
+
+function clearPendingInviteAcceptStorage(userId: string): void {
+  try {
+    window.localStorage.removeItem(pendingInviteAcceptKey(userId));
+  } catch {
+    // 무시
+  }
+}
 
 interface SessionContextValue {
   session: Session | null;
@@ -127,11 +346,27 @@ interface SessionContextValue {
     code: string;
     newPassword: string;
   }) => Promise<AuthCallResult>;
-  refreshRealProfile: () => Promise<void>;
+  refreshRealProfile: () => Promise<ProfileRefreshResult>;
   saveRealProfile: (patch: {
     nickname: string;
     avatarEmoji: string;
   }) => Promise<AuthCallResult>;
+  /** 내 초대 코드 발급/조회 — 멱등이라 마운트 시 호출해도 새 코드가 생기지 않는다. */
+  realCreateInvite: () => Promise<InviteCreateResult>;
+  /** 로그인한 사용자만 호출 가능. 조회만으로 초대를 사용 처리하거나 커플을 연결하지 않는다. */
+  realPreviewInvite: (code: string) => Promise<InvitePreviewResult>;
+  realAcceptInvite: (input: {
+    code: string;
+    relationshipStartDate: string | null;
+  }) => Promise<InviteAcceptResult>;
+  realRevokeInvite: (code: string) => Promise<InviteRevokeResult>;
+  realGetCouple: () => Promise<CoupleFetchResult>;
+  realSetConsent: (granted: boolean) => Promise<ConsentSetResult>;
+  /** 진행 중이거나 결과가 미확정인 초대 수락 기록 — 현재 계정(realUser) 기준으로 복원된다.
+   * 없으면 null(수락을 시도한 적이 없거나, 이미 정리됨). */
+  pendingInviteAccept: PendingInviteAccept | null;
+  /** 재확인 결과 연결이 확인됐거나 더 이상 의미가 없어졌을 때 화면이 직접 정리할 때 쓴다. */
+  clearPendingInviteAccept: () => void;
   logOut: () => Promise<void>;
   enterReviewMode: (accountId: ReviewAccountId) => void;
   switchReviewAccount: (accountId: ReviewAccountId) => void;
@@ -155,7 +390,8 @@ function deriveStatus(
   if (session.kind === 'review') return 'review';
   if (session.kind === 'real') {
     if (!realUser) return 'anonymous'; // 아직 초기 확인/프로필 조회 전 — initializing 가드가 먼저 막는다
-    return profileComplete(realUser.nickname) ? 'real-home' : 'real-incomplete';
+    if (!profileComplete(realUser.nickname)) return 'real-incomplete';
+    return realUser.coupleId ? 'real-connected' : 'real-home';
   }
   if (!trialUser) return 'anonymous'; // 세션은 있는데 사용자가 사라짐(초기화 등)
   if (!profileComplete(trialUser.nickname)) return 'trial-incomplete';
@@ -190,6 +426,13 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   );
   const [trialUser, setTrialUser] = useState<TrialUser | null>(() => trialUserFor(session));
   const [realUser, setRealUser] = useState<RealProfile | null>(null);
+  // 진행 중이거나 미확정인 초대 수락 기록 — 계정(userId)별로 localStorage에 있으면 그대로
+  // 복원한다. 마운트 시점의 로컬 세션 힌트만으로 초기화하고(아직 서버로 확인 전이라도, 이
+  // 기록 자체는 "재진입 시 새 시도를 막는" 용도라 서버 확인을 기다릴 필요가 없다), 세션이
+  // 바뀔 때마다(로그인·로그아웃·계정 전환) 아래 effect가 그 계정의 것으로 다시 맞춘다.
+  const [pendingInviteAccept, setPendingInviteAccept] = useState<PendingInviteAccept | null>(() =>
+    session?.kind === 'real' ? readPendingInviteAccept(session.userId) : null,
+  );
   // 명시적으로 trial(체험)·review(검토)를 선택한 상태만 로컬 기록을 그대로 믿고 즉시 렌더링한다
   // — 둘 다 자기 완결적인 로컬 상태라 서버에 물어볼 게 없다. 그 외(기록이 없거나 `real`)는
   // 로컬 기록을 "힌트"로만 쓰고 실제 로그인 여부는 항상 서버 쿠키(GET /api/auth/me) 기준으로
@@ -214,11 +457,23 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     setSessionState(next);
     setTrialUser(trialUserFor(next));
     if (next?.kind !== 'real') setRealUser(null);
+    // 세션이 바뀔 때마다(로그인·로그아웃·다른 계정으로 전환) 그 계정 자신의 초대 수락 기록
+    // 으로 다시 맞춘다 — 다른 계정으로 전환됐다고 이전 계정의 기록을 지우거나 반영하지
+    // 않는다(각자 자기 userId 키에만 남아 있다). applySession은 세션이 바뀌는 모든 경로가
+    // 반드시 거치므로, 여기 한 곳에서만 다시 읽으면 된다.
+    setPendingInviteAccept(next?.kind === 'real' ? readPendingInviteAccept(next.userId) : null);
     genRef.current += 1;
     setSessionGen(genRef.current);
   }, []);
 
   const currentGen = useCallback(() => genRef.current, []);
+
+  const clearPendingInviteAccept = useCallback(() => {
+    if (session?.kind === 'real') {
+      clearPendingInviteAcceptStorage(session.userId);
+      setPendingInviteAccept(null);
+    }
+  }, [session]);
 
   // GET /api/auth/me → 인증돼 있으면 GET /api/profile까지 확인하는 공통 절차. 상태를 직접
   // 바꾸지 않고 결과만 돌려준다 — 호출부(마운트/재시도용 checkRealSession, 로그인 직후 확인용
@@ -473,12 +728,31 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  const refreshRealProfile = useCallback(async () => {
+  const refreshRealProfile = useCallback<SessionContextValue['refreshRealProfile']>(async () => {
     const gen = genRef.current;
-    const result = await profileApi.getProfile();
-    if (genRef.current !== gen) return;
-    if (result.kind === 'ok') setRealUser(toRealProfile(result.data));
-  }, []);
+    const outcome = await profileApi.getProfile();
+    // 조회가 끝나기 전에 세션이 바뀌었다(로그아웃·계정 전환 등) — 이 결과는 이제 어떤 화면과도
+    // 무관하니 아무 것도 반영하지 않고 조용히 버린다.
+    if (genRef.current !== gen) return { kind: 'stale' };
+    if (outcome.kind === 'ok') {
+      const profile = toRealProfile(outcome.data);
+      setRealUser(profile);
+      return { kind: 'ok', profile };
+    }
+    if (outcome.kind === 'rate-limited') return { kind: 'rate-limited' };
+    if (outcome.kind === 'network-error') return { kind: 'network-error' };
+    if (outcome.kind === 'unknown') return { kind: 'server-error', message: outcome.message };
+    if (outcome.status === 401) {
+      // 보호된 API의 401 — 세대가 이미 위에서 확인됐으므로(다른 계정으로 바뀌지 않았음이
+      // 확인된 뒤에만 여기 도달한다), 지금 세션을 만료로 확정 처리해도 안전하다.
+      applySession(null);
+      return { kind: 'unauthenticated' };
+    }
+    return {
+      kind: 'server-error',
+      message: outcome.message ?? '프로필을 불러오지 못했어요.',
+    };
+  }, [applySession]);
 
   const saveRealProfile = useCallback<SessionContextValue['saveRealProfile']>(
     async ({ nickname, avatarEmoji }) => {
@@ -501,6 +775,273 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         kind: 'rejected',
         message: outcome.message ?? '닉네임을 확인해 주세요.',
       };
+    },
+    [applySession],
+  );
+
+  const realCreateInvite = useCallback<SessionContextValue['realCreateInvite']>(async () => {
+    const gen = genRef.current;
+    const outcome = await inviteApi.createInvite();
+    if (genRef.current !== gen) return { kind: 'network-error' };
+    if (outcome.kind === 'ok') {
+      return { kind: 'ok', code: outcome.data.code, expiresAt: outcome.data.expires_at };
+    }
+    if (outcome.kind === 'rate-limited') return { kind: 'rate-limited' };
+    if (outcome.kind === 'network-error') return { kind: 'network-error' };
+    if (outcome.kind === 'unknown') return { kind: 'unknown', message: outcome.message };
+    const common = commonRejectionKind(outcome);
+    if (common) return common;
+    if (outcome.status === 401) {
+      applySession(null);
+      return { kind: 'unauthenticated' };
+    }
+    if (outcome.status === 409 && outcome.error === 'inviter-already-connected') {
+      return { kind: 'already-connected', message: '이미 연인과 연결돼 있어요.' };
+    }
+    return { kind: 'rejected', message: outcome.message ?? '초대 코드를 만들지 못했어요.' };
+  }, [applySession]);
+
+  const realPreviewInvite = useCallback<SessionContextValue['realPreviewInvite']>(async (code) => {
+    const gen = genRef.current;
+    const outcome = await inviteApi.previewInvite(code);
+    if (genRef.current !== gen) return { kind: 'network-error' };
+    if (outcome.kind === 'ok') {
+      return {
+        kind: 'ok',
+        nickname: outcome.data.inviter_nickname ?? '',
+        avatarEmoji: outcome.data.inviter_avatar_emoji ?? '',
+      };
+    }
+    if (outcome.kind === 'rate-limited') return { kind: 'rate-limited' };
+    if (outcome.kind === 'network-error') return { kind: 'network-error' };
+    // 미리보기는 조회일 뿐이라 미확정 결과를 특별 취급할 이유가 없다 — 다시 조회하면 그만이다.
+    if (outcome.kind === 'unknown') return { kind: 'rejected', message: outcome.message };
+    const common = commonRejectionKind(outcome);
+    if (common) return common;
+    if (outcome.status === 401) {
+      applySession(null);
+      return { kind: 'unauthenticated' };
+    }
+    if (outcome.status === 409 && isInviteReason(outcome.error)) {
+      return { kind: 'invite-rejected', reason: outcome.error };
+    }
+    return { kind: 'rejected', message: outcome.message ?? '코드를 확인하지 못했어요.' };
+  }, [applySession]);
+
+  const realAcceptInvite = useCallback<SessionContextValue['realAcceptInvite']>(
+    async ({ code, relationshipStartDate }) => {
+      const gen = genRef.current;
+      const userId = session?.kind === 'real' ? session.userId : null;
+
+      // localStorage(계정별)는 항상 캡처해 둔 userId에만 쓴다 — 그 사이 다른 계정으로
+      // 전환돼도 엉뚱한 계정의 기록을 건드리지 않는다. 화면에 즉시 보이는 반응형 값
+      // (pendingInviteAccept)은 세대가 그대로일 때만(=지금도 같은 세션일 때만) 갱신한다.
+      const persist = (record: PendingInviteAccept | null) => {
+        if (!userId) return;
+        if (record) writePendingInviteAccept(userId, record);
+        else clearPendingInviteAcceptStorage(userId);
+        if (genRef.current === gen) setPendingInviteAccept(record);
+      };
+
+      // 요청을 보내기 전에 먼저 기록한다 — 응답을 받기 전에 화면을 떠나거나(재진입) 새로고침
+      // 해도 이 기록이 남는다. 비밀번호·인증 코드·토큰은 담지 않는다(code는 초대 코드일 뿐).
+      persist({ code, relationshipStartDate, phase: 'accepting' });
+
+      const outcome = await inviteApi.acceptInvite(code, relationshipStartDate);
+
+      // 5xx는 "서버가 요청을 거절했다"는 확정 신호가 아니다 — 미들웨어 단계(요청 제한·
+      // Origin 검사·인증)에서 나오는 401·403·429나, 서비스가 입력을 검증한 뒤 명시적으로
+      // 돌려주는 400·409와 달리, 5xx는 서버 어디에서든(트랜잭션 도중·커밋 후 응답 작성
+      // 중 등) 발생할 수 있는 처리되지 않은 예외의 결과다. 트랜잭션이 실제로 커밋됐는지,
+      // 롤백됐는지, 아예 실행되지 않았는지는 500 상태 코드만으로 알 수 없다 — 그래서 이
+      // 확정할 수 없는 응답도 unknown/network-error와 동일하게 "미확정"으로 다루고, 실제
+      // 연결 여부는 프로필 재조회로만 확인한다. commonRejectionKind는 다른 호출부(생성·
+      // 미리보기·취소·동의)의 확정 거절 판단에는 그대로 쓰이므로 여기서는 건드리지 않고,
+      // 이 함수 안에서만 5xx를 별도로 먼저 걸러낸다.
+      const isAmbiguousOutcome =
+        outcome.kind === 'unknown' ||
+        outcome.kind === 'network-error' ||
+        (outcome.kind === 'rejected' && outcome.status >= 500);
+
+      // 세션이 이미 바뀌었어도(다른 계정으로 전환 등) 이 계정(userId) 자신의 기록에는 실제로
+      // 일어난 일을 반영해 둔다 — 완전히 지워 버리면 "실제로는 연결됐다"는 사실을 잃어버린다.
+      // 다만 더 이상 이 세션과 무관하므로, 프로필 재조회 같은 후속 네트워크 호출은 하지
+      // 않는다(현재 세션의 쿠키로 다른 계정 확인을 시도하게 되기 때문이다). 반환값은 항상
+      // network-error로 통일한다 — 어차피 이 화면은 더 이상 이 결과를 쓰지 않는다.
+      if (genRef.current !== gen) {
+        if (outcome.kind === 'ok') {
+          persist({ code, relationshipStartDate, phase: 'connected-refresh-failed' });
+        } else if (isAmbiguousOutcome) {
+          persist({ code, relationshipStartDate, phase: 'unconfirmed' });
+        } else {
+          // 확정 거절(또는 확정 거절과 동일하게 다루는 401·403·429, 혹은 입력 자체가 거절된
+          // 400·409) — 없었던 일이 됐다. 5xx는 위 isAmbiguousOutcome에서 이미 처리했으므로
+          // 여기엔 도달하지 않는다.
+          persist(null);
+        }
+        return { kind: 'network-error' };
+      }
+
+      if (outcome.kind === 'ok') {
+        // 수락 자체는 서버에서 확정 성공했다 — 이후 프로필 재조회가 실패해도 "수락 실패"로
+        // 보고하지 않는다. 재시도는 이 조회만 다시 하면 된다(수락 POST를 반복하지 않는다).
+        const check = await refreshRealProfile();
+        if (check.kind === 'stale') {
+          // 이 확인 도중 세션이 바뀌었다 — 그래도 accept 자체는 이 userId 계정에서 확정
+          // 성공했다는 사실은 변하지 않으므로, 그 계정의 기록만은 남겨 둔다(반응형 값은
+          // 이미 다른 세션 것이라 건드리지 않는다).
+          persist({ code, relationshipStartDate, phase: 'connected-refresh-failed' });
+          return { kind: 'network-error' };
+        }
+        if (check.kind === 'unauthenticated') {
+          // 방금 수락은 성공했는데 그 직후 세션이 끊겼다 — "수락 실패"가 아니다. 같은
+          // 계정으로 다시 로그인하면 이 기록으로 복원되도록 남겨 둔다.
+          persist({ code, relationshipStartDate, phase: 'connected-refresh-failed' });
+          return { kind: 'unauthenticated' };
+        }
+        if (check.kind === 'ok') {
+          persist(null); // 연결이 확인됐다 — 기록을 정리한다.
+          return { kind: 'ok', coupleId: outcome.data.coupleId };
+        }
+        persist({ code, relationshipStartDate, phase: 'connected-refresh-failed' });
+        return { kind: 'connected-refresh-failed', coupleId: outcome.data.coupleId };
+      }
+
+      if (isAmbiguousOutcome) {
+        // 수락 요청 자체의 결과를 확정할 수 없다 — 202/503·네트워크 오류뿐 아니라 500 같은
+        // 5xx도 "서버에선 실제로 처리(커밋)됐지만 응답만 유실됐거나 실패했을 수 있는" 상황이므로
+        // 실패로 단정하지 않는다. HTTP 500을 받았다는 사실만으로 트랜잭션이 롤백됐다고
+        // 보고하지 않는다 — POST는 반복하지 않고, 서버의 실제 프로필 상태(coupleId)만
+        // 재조회해 확인한다.
+        const check = await refreshRealProfile();
+        if (check.kind === 'stale') {
+          persist({ code, relationshipStartDate, phase: 'unconfirmed' });
+          return { kind: 'network-error' };
+        }
+        if (check.kind === 'unauthenticated') {
+          // 원래 수락 결과 자체가 미확정이었는데 재조회마저 세션 만료로 실패했다 — 여전히
+          // 아무 것도 확정되지 않았다. 기록은 'unconfirmed'로 남겨 다시 로그인한 뒤 이어서
+          // 확인할 수 있게 한다.
+          persist({ code, relationshipStartDate, phase: 'unconfirmed' });
+          return { kind: 'unauthenticated' };
+        }
+        if (check.kind === 'ok' && check.profile.coupleId) {
+          persist(null); // 연결이 확인됐다 — 기록을 정리한다.
+          return { kind: 'ok', coupleId: check.profile.coupleId };
+        }
+        // 조회 자체가 실패했거나(check.kind !== 'ok'), 조회는 됐지만 아직 연결이 확인되지
+        // 않았다 — 둘 다 "미확정"으로 남긴다(성공도 확정 실패도 아니다). 이 한 번의 조회
+        // 결과만으로 이전 수락이 실패했다고 확정하지 않는다 — 기록을 그대로 유지한다.
+        persist({ code, relationshipStartDate, phase: 'unconfirmed' });
+        const message =
+          outcome.kind === 'unknown'
+            ? outcome.message
+            : outcome.kind === 'network-error'
+              ? NETWORK_ERROR_MESSAGE
+              : (outcome.message ?? SERVER_ERROR_MESSAGE);
+        return { kind: 'unconfirmed', message };
+      }
+
+      // 아래부터는 서버가 수락 로직을 실행하기도 전에(요청 제한·Origin 검사·인증) 확정적으로
+      // 거절했거나, API 계약상 입력을 검증한 뒤 명시적으로 돌려주는 결과(400 날짜 형식·409
+      // 사유)다 — 이 경우들만 "이 수락은 처리되지 않았음이 보장"되므로 기록을 정리해 코드
+      // 수정·새 시도를 허용한다. 5xx는 위 isAmbiguousOutcome 분기에서 이미 처리돼 여기 도달하지
+      // 않는다 — 이 시점부터는 outcome.status가 5xx일 수 없다.
+      if (outcome.kind === 'rate-limited') {
+        persist(null);
+        return { kind: 'rate-limited' };
+      }
+      const common = commonRejectionKind(outcome);
+      if (common) {
+        persist(null);
+        return common;
+      }
+      if (outcome.status === 401) {
+        persist(null);
+        applySession(null);
+        return { kind: 'unauthenticated' };
+      }
+      if (outcome.status === 400 && outcome.error === 'invalid-relationship-start-date') {
+        persist(null);
+        return { kind: 'invalid-date', message: outcome.message ?? '날짜 형식을 확인해 주세요.' };
+      }
+      if (outcome.status === 409 && isInviteReason(outcome.error)) {
+        persist(null);
+        return { kind: 'invite-rejected', reason: outcome.error };
+      }
+      persist(null);
+      return { kind: 'rejected', message: outcome.message ?? '연결하지 못했어요.' };
+    },
+    [applySession, refreshRealProfile, session],
+  );
+
+  const realRevokeInvite = useCallback<SessionContextValue['realRevokeInvite']>(async (code) => {
+    const gen = genRef.current;
+    const outcome = await inviteApi.revokeInvite(code);
+    if (genRef.current !== gen) return { kind: 'network-error' };
+    if (outcome.kind === 'ok' && outcome.status === 204) return { kind: 'ok' };
+    if (outcome.kind === 'rate-limited') return { kind: 'rate-limited' };
+    if (outcome.kind === 'network-error') return { kind: 'network-error' };
+    if (outcome.kind === 'rejected') {
+      const common = commonRejectionKind(outcome);
+      if (common) return common;
+      if (outcome.status === 401) {
+        applySession(null);
+        return { kind: 'unauthenticated' };
+      }
+      return { kind: 'rejected', message: outcome.message ?? '취소하지 못했어요.' };
+    }
+    // 'ok'인데 204가 아니거나 'unknown' — 둘 다 예상 밖 응답이라 완료로 단정하지 않는다.
+    return { kind: 'rejected', message: '취소 결과를 확인하지 못했어요.' };
+  }, [applySession]);
+
+  const realGetCouple = useCallback<SessionContextValue['realGetCouple']>(async () => {
+    const gen = genRef.current;
+    const outcome = await coupleApi.getCouple();
+    if (genRef.current !== gen) return { kind: 'network-error' };
+    if (outcome.kind === 'ok') return { kind: 'ok', couple: toRealCouple(outcome.data) };
+    if (outcome.kind === 'rate-limited') return { kind: 'rate-limited' };
+    if (outcome.kind === 'network-error') return { kind: 'network-error' };
+    if (outcome.kind === 'unknown') {
+      return {
+        kind: 'server-error',
+        message: outcome.message || '서버에서 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+      };
+    }
+    if (outcome.status === 401) {
+      applySession(null);
+      return { kind: 'unauthenticated' };
+    }
+    if (outcome.status === 404 && outcome.error === 'not-connected') return { kind: 'not-connected' };
+    if (outcome.status >= 500) {
+      return {
+        kind: 'server-error',
+        message: '서버에서 처리 중 오류가 발생했습니다. 잠시 후 다시 시도해 주세요.',
+      };
+    }
+    return { kind: 'rejected', message: outcome.message ?? '커플 정보를 불러오지 못했어요.' };
+  }, [applySession]);
+
+  const realSetConsent = useCallback<SessionContextValue['realSetConsent']>(
+    async (granted) => {
+      const gen = genRef.current;
+      const outcome = await consentApi.setConsent(granted);
+      if (genRef.current !== gen) return { kind: 'network-error' };
+      if (outcome.kind === 'ok') {
+        // 200 확정 성공에서만 로컬 상태를 반영한다 — 미확정 응답으로는 절대 바꾸지 않는다.
+        setRealUser((prev) => (prev ? { ...prev, analysisConsent: granted } : prev));
+        return { kind: 'ok', granted };
+      }
+      if (outcome.kind === 'unknown') return { kind: 'unknown', message: outcome.message };
+      if (outcome.kind === 'rate-limited') return { kind: 'rate-limited' };
+      if (outcome.kind === 'network-error') return { kind: 'network-error' };
+      const common = commonRejectionKind(outcome);
+      if (common) return common;
+      if (outcome.status === 401) {
+        applySession(null);
+        return { kind: 'unauthenticated' };
+      }
+      return { kind: 'rejected', message: outcome.message ?? '동의 설정을 저장하지 못했어요.' };
     },
     [applySession],
   );
@@ -573,6 +1114,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       realConfirmPasswordReset,
       refreshRealProfile,
       saveRealProfile,
+      realCreateInvite,
+      realPreviewInvite,
+      realAcceptInvite,
+      realRevokeInvite,
+      realGetCouple,
+      realSetConsent,
+      pendingInviteAccept,
+      clearPendingInviteAccept,
       logOut,
       enterReviewMode,
       switchReviewAccount,
@@ -601,6 +1150,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
       realConfirmPasswordReset,
       refreshRealProfile,
       saveRealProfile,
+      realCreateInvite,
+      realPreviewInvite,
+      realAcceptInvite,
+      realRevokeInvite,
+      realGetCouple,
+      realSetConsent,
+      pendingInviteAccept,
+      clearPendingInviteAccept,
       logOut,
       enterReviewMode,
       switchReviewAccount,

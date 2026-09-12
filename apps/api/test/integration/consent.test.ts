@@ -158,6 +158,33 @@ describe('consent API', () => {
     expect(rows[0]?.consent_version).toBe(history[history.length - 1]?.version);
   });
 
+  it('cannot change another user\'s consent — PUT always targets only the authenticated caller', async () => {
+    const app = await buildTestApp();
+    const pool = await getTestPool();
+    const userA = await createUser(pool, 'a@example.com');
+    const userB = await createUser(pool, 'b@example.com');
+
+    await request(app)
+      .put('/api/consent')
+      .set('X-Test-User-Id', userA.id)
+      .set('Origin', TEST_ALLOWED_ORIGIN)
+      .send({ granted: true })
+      .expect(200);
+
+    // B는 자기 헤더로만 요청했다 — 요청 본문에 다른 사용자를 지정할 방법 자체가 없다(라우트가
+    // req.userId만 쓴다). A를 바꿨다고 B에 영향이 없는지, 그리고 B 자신은 여전히 기본값인지
+    // 함께 확인한다.
+    const profileA = await request(app).get('/api/profile').set('X-Test-User-Id', userA.id).expect(200);
+    const profileB = await request(app).get('/api/profile').set('X-Test-User-Id', userB.id).expect(200);
+    expect(profileA.body.analysis_consent).toBe(true);
+    expect(profileB.body.analysis_consent).toBe(false);
+
+    const historyA = await listConsentHistory(pool, userA.id);
+    const historyB = await listConsentHistory(pool, userB.id);
+    expect(historyA).toHaveLength(1);
+    expect(historyB).toHaveLength(0); // B의 이력에는 아무 것도 안 쌓였다
+  });
+
   it('keeps analysis_consent consistent with the latest history row under concurrent writes', async () => {
     const pool = await getTestPool();
     const user = await createUser(pool, 'a@example.com');

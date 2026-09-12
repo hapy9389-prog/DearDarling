@@ -17,9 +17,18 @@ vi.mock('../../../api/profileApi', async (importOriginal) => {
   const actual = await importOriginal<typeof import('../../../api/profileApi')>();
   return { ...actual, getProfile: vi.fn(), updateProfile: vi.fn() };
 });
+vi.mock('../../../api/inviteApi');
+vi.mock('../../../api/coupleApi', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../../api/coupleApi')>();
+  return { ...actual, getCouple: vi.fn(), updateCouple: vi.fn() };
+});
+vi.mock('../../../api/consentApi');
 
 import * as authApi from '../../../api/authApi';
 import * as profileApi from '../../../api/profileApi';
+import * as inviteApi from '../../../api/inviteApi';
+import * as coupleApi from '../../../api/coupleApi';
+import * as consentApi from '../../../api/consentApi';
 
 beforeEach(() => {
   // real 세션 힌트가 로컬에 없어도 서버 쿠키를 항상 확인한다(고침 4) — 기본은 "로그인 안 됨"
@@ -29,9 +38,16 @@ beforeEach(() => {
 
 afterEach(() => {
   resetAllMockData();
-  // SignUpScreen의 "인증 재개" 기록은 mock 네임스페이스 밖(deardarling:web:v1:*)이라
-  // resetAllMockData가 못 지운다 — 테스트 간에 새지 않게 직접 지운다.
+  // SignUpScreen의 "인증 재개" 기록·초대 수락 미확정 기록은 mock 네임스페이스 밖
+  // (deardarling:web:v1:*)이라 resetAllMockData가 못 지운다 — 테스트 간에 새지 않게 직접
+  // 지운다(수락 기록은 계정별 키라 접두사로 전부 찾아 지운다).
   window.localStorage.removeItem('deardarling:web:v1:pending-signup-email');
+  for (let i = window.localStorage.length - 1; i >= 0; i -= 1) {
+    const key = window.localStorage.key(i);
+    if (key?.startsWith('deardarling:web:v1:pending-invite-accept:')) {
+      window.localStorage.removeItem(key);
+    }
+  }
   vi.clearAllMocks();
 });
 
@@ -404,6 +420,592 @@ describe('로그인 상태에서 비밀번호 재설정', () => {
     // 마운트 시 1번(초기 세션 확인) 외에는 재확인 호출이 더 없어야 한다(다른 계정이라 재확인
     // 자체를 하지 않는다).
     expect(authApi.getSession).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('실제 계정 — 초대·커플 연결·동의', () => {
+  const PROFILE_A = {
+    id: 'u-a',
+    email: 'a@a.com',
+    nickname: '민준',
+    avatar_emoji: '🐻',
+    couple_id: null,
+    analysis_consent: false,
+  };
+  const PROFILE_B = {
+    id: 'u-b',
+    email: 'b@b.com',
+    nickname: '서연',
+    avatar_emoji: '🐥',
+    couple_id: null,
+    analysis_consent: false,
+  };
+
+  it('계정 A가 초대 코드를 만들고, 계정 B가 미리보기·수락하면 양쪽에 같은 연결 상태가 표시된다', async () => {
+    const user = userEvent.setup();
+
+    // --- 계정 A: 초대 코드 만들기 ---
+    vi.mocked(authApi.getSession).mockResolvedValue({
+      ok: true,
+      data: { authenticated: true, userId: 'u-a' },
+    });
+    vi.mocked(profileApi.getProfile).mockResolvedValue({ kind: 'ok', status: 200, data: PROFILE_A });
+    vi.mocked(inviteApi.createInvite).mockResolvedValue({
+      kind: 'ok',
+      status: 200,
+      data: {
+        id: 'inv1',
+        code: 'DD-ABCDEF',
+        inviter_user_id: 'u-a',
+        accepted_by_user_id: null,
+        status: 'pending',
+        created_at: '2025-01-01T00:00:00Z',
+        expires_at: '2025-01-04T00:00:00Z',
+        accepted_at: null,
+      },
+    });
+
+    const accountA = renderApp({ route: '/real/connect', session: { kind: 'real', userId: 'u-a' } });
+    expect(await screen.findByText('DD-ABCDEF')).toBeInTheDocument();
+    accountA.unmount(); // 계정 A 화면을 완전히 내린 뒤 계정 B를 별도로 렌더링한다(다른 브라우저를 흉내)
+
+    // --- 계정 B: 미리보기(A의 닉네임 확인) → 수락 ---
+    vi.mocked(authApi.getSession).mockResolvedValue({
+      ok: true,
+      data: { authenticated: true, userId: 'u-b' },
+    });
+    vi.mocked(profileApi.getProfile)
+      .mockResolvedValueOnce({ kind: 'ok', status: 200, data: PROFILE_B }) // 마운트 시(미연결, SessionProvider)
+      .mockResolvedValue({ kind: 'ok', status: 200, data: { ...PROFILE_B, couple_id: 'couple1' } }); // 수락 뒤 재조회
+    vi.mocked(inviteApi.previewInvite).mockResolvedValue({
+      kind: 'ok',
+      status: 200,
+      data: { inviter_nickname: '민준', inviter_avatar_emoji: '🐻' },
+    });
+    vi.mocked(inviteApi.acceptInvite).mockResolvedValue({
+      kind: 'ok',
+      status: 200,
+      data: { coupleId: 'couple1' },
+    });
+    vi.mocked(coupleApi.getCouple).mockResolvedValue({
+      kind: 'ok',
+      status: 200,
+      data: {
+        id: 'couple1',
+        connected_at: '2025-01-01T00:00:00Z',
+        relationship_start_date: '2024-06-01',
+        is_seed: false,
+        partner: { nickname: '민준', avatar_emoji: '🐻' },
+      },
+    });
+
+    renderApp({ route: '/real/connect/join', session: { kind: 'real', userId: 'u-b' } });
+    await user.type(await screen.findByLabelText('초대 코드'), 'DD-ABCDEF');
+    await user.click(screen.getByRole('button', { name: '확인' }));
+
+    // 미리보기에서 실제 상대(A)의 닉네임이 보여야 한다 — mock과 달리 실제 API로 확인된 것.
+    expect(await screen.findByText('민준')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '연결' }));
+
+    // 연결 뒤 홈에서 상대 이름·연결 상태가 보인다.
+    expect(await screen.findByText(/민준님과 연결됐어요/)).toBeInTheDocument();
+    expect(screen.getByText(/2024-06-01부터 함께하고 있어요/)).toBeInTheDocument();
+  });
+
+  it('새로고침(재마운트) 후에도 연결 상태가 유지된다', async () => {
+    vi.mocked(authApi.getSession).mockResolvedValue({
+      ok: true,
+      data: { authenticated: true, userId: 'u-b' },
+    });
+    vi.mocked(profileApi.getProfile).mockResolvedValue({
+      kind: 'ok',
+      status: 200,
+      data: { ...PROFILE_B, couple_id: 'couple1' },
+    });
+    vi.mocked(coupleApi.getCouple).mockResolvedValue({
+      kind: 'ok',
+      status: 200,
+      data: {
+        id: 'couple1',
+        connected_at: '2025-01-01T00:00:00Z',
+        relationship_start_date: null,
+        is_seed: false,
+        partner: { nickname: '민준', avatar_emoji: '🐻' },
+      },
+    });
+
+    // accept를 다시 호출하지 않고, 세션 복원(getSession+getProfile)만으로 곧장 연결된 홈이
+    // 보여야 한다 — 재로그인·새로고침 시나리오와 같다.
+    renderApp({ route: '/real/home', session: { kind: 'real', userId: 'u-b' } });
+    expect(await screen.findByText(/민준님과 연결됐어요/)).toBeInTheDocument();
+    expect(inviteApi.acceptInvite).not.toHaveBeenCalled();
+  });
+
+  it('만료된 코드는 사유별 안내를 보여준다', async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.getSession).mockResolvedValue({
+      ok: true,
+      data: { authenticated: true, userId: 'u-b' },
+    });
+    vi.mocked(profileApi.getProfile).mockResolvedValue({ kind: 'ok', status: 200, data: PROFILE_B });
+    vi.mocked(inviteApi.previewInvite).mockResolvedValue({
+      kind: 'rejected',
+      status: 409,
+      error: 'expired',
+    });
+
+    renderApp({ route: '/real/connect/join', session: { kind: 'real', userId: 'u-b' } });
+    await user.type(await screen.findByLabelText('초대 코드'), 'DD-EXPIRE');
+    await user.click(screen.getByRole('button', { name: '확인' }));
+    expect(await screen.findByText('만료된 코드예요. 상대에게 새 코드를 받아 주세요.')).toBeInTheDocument();
+  });
+
+  it('미리보기 응답을 기다리는 중 화면을 벗어나면(언마운트) 늦게 도착한 응답이 아무 효과를 내지 않는다', async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.getSession).mockResolvedValue({
+      ok: true,
+      data: { authenticated: true, userId: 'u-b' },
+    });
+    vi.mocked(profileApi.getProfile).mockResolvedValue({ kind: 'ok', status: 200, data: PROFILE_B });
+
+    let resolvePreview!: (v: Awaited<ReturnType<typeof inviteApi.previewInvite>>) => void;
+    vi.mocked(inviteApi.previewInvite).mockReturnValue(
+      new Promise((resolve) => {
+        resolvePreview = resolve;
+      }),
+    );
+
+    const rendered = renderApp({ route: '/real/connect/join', session: { kind: 'real', userId: 'u-b' } });
+    await user.type(await screen.findByLabelText('초대 코드'), 'DD-SLOW01');
+    await user.click(screen.getByRole('button', { name: '확인' })); // 응답 대기 중(아직 안 옴)
+
+    rendered.unmount(); // 화면을 완전히 떠난다
+
+    resolvePreview({
+      kind: 'ok',
+      status: 200,
+      data: { inviter_nickname: '누군가', inviter_avatar_emoji: '🙂' },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    // 늦게 도착한 응답이 언마운트된 화면에서 setState 경고 없이 조용히 무시돼야 한다 —
+    // (수락까지 진행됐다면 호출됐을) acceptInvite가 호출되지 않았다는 것으로도 확인한다.
+    expect(inviteApi.acceptInvite).not.toHaveBeenCalled();
+  });
+
+  it('조회 중 초대 코드를 바꾸면 이전 미리보기 응답이 새 화면을 덮어쓰지 않는다', async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.getSession).mockResolvedValue({
+      ok: true,
+      data: { authenticated: true, userId: 'u-b' },
+    });
+    vi.mocked(profileApi.getProfile).mockResolvedValue({ kind: 'ok', status: 200, data: PROFILE_B });
+
+    let resolveFirstPreview!: (v: Awaited<ReturnType<typeof inviteApi.previewInvite>>) => void;
+    vi.mocked(inviteApi.previewInvite).mockReturnValue(
+      new Promise((resolve) => {
+        resolveFirstPreview = resolve;
+      }),
+    );
+
+    renderApp({ route: '/real/connect/join', session: { kind: 'real', userId: 'u-b' } });
+    const codeInput = await screen.findByLabelText('초대 코드');
+    await user.type(codeInput, 'DD-AAAAAA');
+    await user.click(screen.getByRole('button', { name: '확인' })); // 첫 코드 조회 — 응답 대기 중
+
+    // 응답이 오기 전에 코드를 바꾼다 — 첫 조회는 이제 무효화된다.
+    await user.clear(codeInput);
+    await user.type(codeInput, 'DD-BBBBBB');
+
+    // 이제야 첫 코드(AAAAAA)에 대한 미리보기 응답이 도착한다 — "이전 상대"로 확인 카드가
+    // 뜨면 안 된다(이미 다른 코드로 바뀐 뒤다).
+    resolveFirstPreview({
+      kind: 'ok',
+      status: 200,
+      data: { inviter_nickname: '이전상대', inviter_avatar_emoji: '🙂' },
+    });
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(screen.queryByText('이전상대')).not.toBeInTheDocument();
+    expect(screen.queryByText('이 분과 연결할까요?')).not.toBeInTheDocument();
+    // 코드 변경으로 로딩 상태도 함께 정리돼 확인 버튼이 다시 눌릴 수 있어야 한다(멈춰있지 않음).
+    expect(screen.getByRole('button', { name: '확인' })).not.toBeDisabled();
+  });
+
+  it('수락이 진행 중인 동안에는 취소할 수 없고, 결과 확인 뒤에는 다시 조작할 수 있다', async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.getSession).mockResolvedValue({
+      ok: true,
+      data: { authenticated: true, userId: 'u-b' },
+    });
+    vi.mocked(profileApi.getProfile).mockResolvedValue({ kind: 'ok', status: 200, data: PROFILE_B });
+    vi.mocked(inviteApi.previewInvite).mockResolvedValue({
+      kind: 'ok',
+      status: 200,
+      data: { inviter_nickname: '민준', inviter_avatar_emoji: '🐻' },
+    });
+
+    let resolveAccept!: (v: Awaited<ReturnType<typeof inviteApi.acceptInvite>>) => void;
+    vi.mocked(inviteApi.acceptInvite).mockReturnValue(
+      new Promise((resolve) => {
+        resolveAccept = resolve;
+      }),
+    );
+
+    renderApp({ route: '/real/connect/join', session: { kind: 'real', userId: 'u-b' } });
+    await user.type(await screen.findByLabelText('초대 코드'), 'DD-ABCDEF');
+    await user.click(screen.getByRole('button', { name: '확인' }));
+    await screen.findByText('민준');
+
+    await user.click(screen.getByRole('button', { name: '연결' })); // 수락 요청을 보낸 뒤 — 서버 처리는 이제 취소되지 않는다
+    const cancelButton = screen.getByRole('button', { name: '취소' });
+    expect(cancelButton).toBeDisabled(); // 진행 중에는 취소할 수 없다
+
+    resolveAccept({ kind: 'ok', status: 200, data: { coupleId: 'couple1' } });
+    await waitFor(() => expect(screen.queryByText('받은 코드 입력')).not.toBeInTheDocument());
+  });
+
+  it('연결 확인이 안 된 상태(미확정)에서는 "연결" 버튼이 사라져 수락 요청을 다시 보낼 수 없고, "다시 확인"은 조회만 한다', async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.getSession).mockResolvedValue({
+      ok: true,
+      data: { authenticated: true, userId: 'u-b' },
+    });
+    vi.mocked(profileApi.getProfile).mockResolvedValueOnce({
+      kind: 'ok',
+      status: 200,
+      data: PROFILE_B,
+    }); // 마운트(SessionProvider)
+    vi.mocked(inviteApi.previewInvite).mockResolvedValue({
+      kind: 'ok',
+      status: 200,
+      data: { inviter_nickname: '민준', inviter_avatar_emoji: '🐻' },
+    });
+    vi.mocked(inviteApi.acceptInvite).mockResolvedValue({ kind: 'network-error' });
+    // 수락 직후 재조회 — 아직 연결이 확인되지 않음(unconfirmed로 남아야 함).
+    vi.mocked(profileApi.getProfile).mockResolvedValueOnce({
+      kind: 'ok',
+      status: 200,
+      data: { ...PROFILE_B, couple_id: null },
+    });
+
+    renderApp({ route: '/real/connect/join', session: { kind: 'real', userId: 'u-b' } });
+    await user.type(await screen.findByLabelText('초대 코드'), 'DD-ABCDEF');
+    await user.click(screen.getByRole('button', { name: '확인' }));
+    await screen.findByText('민준');
+    await user.click(screen.getByRole('button', { name: '연결' }));
+
+    expect(await screen.findByText('연결 결과를 확인하지 못했습니다. 다시 확인해 주세요.')).toBeInTheDocument();
+    // "연결" 버튼이 화면에서 사라져 실수로 수락 POST를 다시 보낼 수 없다.
+    expect(screen.queryByRole('button', { name: '연결' })).not.toBeInTheDocument();
+    expect(inviteApi.acceptInvite).toHaveBeenCalledTimes(1);
+
+    // "다시 확인"은 조회(getProfile)만 한다 — 이번엔 연결이 확인됐다고 응답한다.
+    vi.mocked(profileApi.getProfile).mockResolvedValue({
+      kind: 'ok',
+      status: 200,
+      data: { ...PROFILE_B, couple_id: 'couple1' },
+    });
+    await user.click(screen.getByRole('button', { name: '다시 확인' }));
+
+    await waitFor(() => expect(screen.queryByText('받은 코드 입력')).not.toBeInTheDocument());
+    // 수락 POST는 여전히 처음 한 번만 — "다시 확인"이 반복 호출하지 않았다.
+    expect(inviteApi.acceptInvite).toHaveBeenCalledTimes(1);
+  });
+
+  it('연결은 확정 성공했지만 정보 조회만 실패한 상태에서는 "다시 확인"만 있고, 재조회가 다시 실패해도 상태를 유지한다', async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.getSession).mockResolvedValue({
+      ok: true,
+      data: { authenticated: true, userId: 'u-b' },
+    });
+    vi.mocked(profileApi.getProfile).mockResolvedValueOnce({
+      kind: 'ok',
+      status: 200,
+      data: PROFILE_B,
+    }); // 마운트(SessionProvider)
+    vi.mocked(inviteApi.previewInvite).mockResolvedValue({
+      kind: 'ok',
+      status: 200,
+      data: { inviter_nickname: '민준', inviter_avatar_emoji: '🐻' },
+    });
+    // 수락 자체는 확정 성공 — 그 직후 재조회만 실패한다.
+    vi.mocked(inviteApi.acceptInvite).mockResolvedValue({
+      kind: 'ok',
+      status: 200,
+      data: { coupleId: 'couple1' },
+    });
+    vi.mocked(profileApi.getProfile).mockResolvedValueOnce({ kind: 'network-error' }); // 수락 직후 재조회 실패
+
+    renderApp({ route: '/real/connect/join', session: { kind: 'real', userId: 'u-b' } });
+    await user.type(await screen.findByLabelText('초대 코드'), 'DD-ABCDEF');
+    await user.click(screen.getByRole('button', { name: '확인' }));
+    await screen.findByText('민준');
+    await user.click(screen.getByRole('button', { name: '연결' }));
+
+    expect(
+      await screen.findByText('연결은 완료됐지만 정보를 불러오지 못했습니다. 다시 확인해 주세요.'),
+    ).toBeInTheDocument();
+    // "연결"은 물론 "처음부터 다시"도 없다 — 이미 연결은 확정 성공했으므로 새로 시작할 이유가
+    // 없고, 오직 조회만 다시 시도할 수 있다.
+    expect(screen.queryByRole('button', { name: '연결' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '처음부터 다시' })).not.toBeInTheDocument();
+    expect(inviteApi.acceptInvite).toHaveBeenCalledTimes(1);
+
+    // 재조회가 다시 실패해도(네트워크 오류) 상태는 그대로 유지된다 — "처음부터 다시"가
+    // 생기거나 실패로 확정되지 않는다.
+    vi.mocked(profileApi.getProfile).mockResolvedValueOnce({ kind: 'network-error' });
+    await user.click(screen.getByRole('button', { name: '다시 확인' }));
+    expect(await screen.findByText('연결 상태를 확인하지 못했습니다. 다시 확인해 주세요.')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '연결' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '처음부터 다시' })).not.toBeInTheDocument();
+    expect(inviteApi.acceptInvite).toHaveBeenCalledTimes(1); // 여전히 한 번뿐
+
+    // 이번엔 재조회가 성공하고 실제로 연결까지 확인된다 — 그제서야 홈으로 이동한다.
+    vi.mocked(profileApi.getProfile).mockResolvedValue({
+      kind: 'ok',
+      status: 200,
+      data: { ...PROFILE_B, couple_id: 'couple1' },
+    });
+    await user.click(screen.getByRole('button', { name: '다시 확인' }));
+    await waitFor(() => expect(screen.queryByText('받은 코드 입력')).not.toBeInTheDocument());
+    expect(inviteApi.acceptInvite).toHaveBeenCalledTimes(1);
+  });
+
+  it('재진입 시 이전에 남은 미확정 기록을 보고 서버 상태부터 재확인한다 — 새 시도를 시작할 기회를 주지 않는다', async () => {
+    // 지난 방문에서 수락 결과가 미확정으로 남았던 기록을 미리 심어 둔다(실제로는 화면이
+    // 언마운트되기 전에 SessionContext.realAcceptInvite가 요청 전에 이렇게 남겼을 것이다).
+    // 비밀번호·인증 코드·토큰은 없고, 초대 코드·날짜·상태만 있다.
+    window.localStorage.setItem(
+      'deardarling:web:v1:pending-invite-accept:u-b',
+      JSON.stringify({ code: 'DD-ABCDEF', relationshipStartDate: null, phase: 'unconfirmed' }),
+    );
+    vi.mocked(authApi.getSession).mockResolvedValue({
+      ok: true,
+      data: { authenticated: true, userId: 'u-b' },
+    });
+    vi.mocked(profileApi.getProfile)
+      .mockResolvedValueOnce({ kind: 'ok', status: 200, data: PROFILE_B }) // 마운트(SessionProvider) — 아직 로컬엔 미연결로 기록
+      .mockResolvedValue({ kind: 'ok', status: 200, data: { ...PROFILE_B, couple_id: 'couple1' } }); // 재진입 시 자동 재확인 — 실제로는 연결돼 있었음
+    vi.mocked(coupleApi.getCouple).mockResolvedValue({
+      kind: 'ok',
+      status: 200,
+      data: {
+        id: 'couple1',
+        connected_at: '2025-01-01T00:00:00Z',
+        relationship_start_date: null,
+        is_seed: false,
+        partner: { nickname: '민준', avatar_emoji: '🐻' },
+      },
+    });
+
+    renderApp({ route: '/real/connect/join', session: { kind: 'real', userId: 'u-b' } });
+
+    // 코드 입력 화면 대신 기록을 보고 곧바로 재확인이 자동으로 실행되고, 연결이 확인되면
+    // RedirectIfRealConnected가 홈으로 돌려보낸다 — 그 사이 코드 입력·새 시도를 할 기회 자체가
+    // 없다.
+    expect(await screen.findByText(/민준님과 연결됐어요/)).toBeInTheDocument();
+    expect(screen.queryByLabelText('초대 코드')).not.toBeInTheDocument();
+  });
+
+  it('재진입 시 자동 재확인이 지연되는 동안에는 코드 입력·새 수락이 불가능하다(미확정 → 이탈 → 재진입 → 조회 지연 중)', async () => {
+    window.localStorage.setItem(
+      'deardarling:web:v1:pending-invite-accept:u-b',
+      JSON.stringify({ code: 'DD-ABCDEF', relationshipStartDate: null, phase: 'unconfirmed' }),
+    );
+    vi.mocked(authApi.getSession).mockResolvedValue({
+      ok: true,
+      data: { authenticated: true, userId: 'u-b' },
+    });
+    vi.mocked(profileApi.getProfile).mockResolvedValueOnce({
+      kind: 'ok',
+      status: 200,
+      data: PROFILE_B,
+    }); // 마운트(SessionProvider)
+
+    // 재진입 시 자동으로 걸리는 재확인(refreshRealProfile → getProfile)을 일부러 지연시킨다.
+    let resolveRecheck!: (v: Awaited<ReturnType<typeof profileApi.getProfile>>) => void;
+    vi.mocked(profileApi.getProfile).mockReturnValue(
+      new Promise((resolve) => {
+        resolveRecheck = resolve;
+      }),
+    );
+
+    renderApp({ route: '/real/connect/join', session: { kind: 'real', userId: 'u-b' } });
+
+    // 조회가 끝나기 전까지는 코드 입력 폼 자체가 없다 — 새 수락을 시작할 방법이 없다.
+    await screen.findByText('다시 확인');
+    expect(screen.queryByLabelText('초대 코드')).not.toBeInTheDocument();
+    expect(inviteApi.acceptInvite).not.toHaveBeenCalled();
+
+    resolveRecheck({ kind: 'ok', status: 200, data: { ...PROFILE_B, couple_id: null } });
+    await waitFor(() =>
+      expect(
+        screen.getByText('아직 연결이 확인되지 않았습니다. 잠시 후 다시 확인해 주세요.'),
+      ).toBeInTheDocument(),
+    );
+    // 조회가 끝난 뒤에도 여전히 코드 입력 폼은 없다 — 미확정 기록이 그대로 남아 있다.
+    expect(screen.queryByLabelText('초대 코드')).not.toBeInTheDocument();
+    expect(
+      JSON.parse(window.localStorage.getItem('deardarling:web:v1:pending-invite-accept:u-b')!).phase,
+    ).toBe('unconfirmed');
+    expect(inviteApi.acceptInvite).not.toHaveBeenCalled();
+  });
+
+  it('재진입 조회가 실패해도 미확정 기록·안내를 그대로 유지한다(성공·실패로 확정하지 않음)', async () => {
+    window.localStorage.setItem(
+      'deardarling:web:v1:pending-invite-accept:u-b',
+      JSON.stringify({ code: 'DD-ABCDEF', relationshipStartDate: null, phase: 'connected-refresh-failed' }),
+    );
+    vi.mocked(authApi.getSession).mockResolvedValue({
+      ok: true,
+      data: { authenticated: true, userId: 'u-b' },
+    });
+    vi.mocked(profileApi.getProfile)
+      .mockResolvedValueOnce({ kind: 'ok', status: 200, data: PROFILE_B }) // 마운트
+      .mockResolvedValueOnce({ kind: 'network-error' }); // 재진입 시 자동 재확인 — 실패
+
+    renderApp({ route: '/real/connect/join', session: { kind: 'real', userId: 'u-b' } });
+
+    expect(
+      await screen.findByText('연결 상태를 확인하지 못했습니다. 다시 확인해 주세요.'),
+    ).toBeInTheDocument();
+    // 조회 실패를 성공·확정 실패 어느 쪽으로도 단정하지 않는다 — 기록·코드가 그대로 보인다.
+    expect(screen.getByText('DD-ABCDEF')).toBeInTheDocument();
+    expect(screen.queryByLabelText('초대 코드')).not.toBeInTheDocument();
+    expect(
+      JSON.parse(window.localStorage.getItem('deardarling:web:v1:pending-invite-accept:u-b')!).phase,
+    ).toBe('connected-refresh-failed'); // 조회 실패만으로 idle로 돌아가지 않는다
+    expect(inviteApi.acceptInvite).not.toHaveBeenCalled();
+  });
+
+  it('접속 주소 문제(403) 등은 초대 생성 실패로 구분해 안내한다', async () => {
+    vi.mocked(authApi.getSession).mockResolvedValue({
+      ok: true,
+      data: { authenticated: true, userId: 'u-a' },
+    });
+    vi.mocked(profileApi.getProfile).mockResolvedValue({ kind: 'ok', status: 200, data: PROFILE_A });
+    vi.mocked(inviteApi.createInvite).mockResolvedValue({
+      kind: 'rejected',
+      status: 403,
+      error: 'origin-not-allowed',
+    });
+
+    renderApp({ route: '/real/connect', session: { kind: 'real', userId: 'u-a' } });
+    expect(await screen.findByText(/접속 주소나 서버 설정을 확인해 주세요/)).toBeInTheDocument();
+  });
+
+  it('동의는 연결 여부와 무관하게 접근·저장할 수 있고, 강제로 켜지 않는다', async () => {
+    const user = userEvent.setup();
+    vi.mocked(authApi.getSession).mockResolvedValue({
+      ok: true,
+      data: { authenticated: true, userId: 'u-a' },
+    });
+    vi.mocked(profileApi.getProfile).mockResolvedValue({ kind: 'ok', status: 200, data: PROFILE_A });
+    vi.mocked(consentApi.setConsent).mockResolvedValue({
+      kind: 'ok',
+      status: 200,
+      data: { id: 'e1', user_id: 'u-a', granted: true, version: 1, changed_at: '2025-01-01T00:00:00Z' },
+    });
+
+    // 미연결 상태에서도 /real/consent에 곧장 접근할 수 있다.
+    renderApp({ route: '/real/consent', session: { kind: 'real', userId: 'u-a' } });
+    const toggle = await screen.findByRole('checkbox');
+    expect(toggle).not.toBeChecked();
+    // 동의를 켜지 않아도 계속 진행할 수 있다(강제 아님).
+    expect(screen.getByRole('button', { name: /나중에 정하고 계속하기/ })).toBeInTheDocument();
+
+    await user.click(toggle);
+    await waitFor(() => expect(toggle).toBeChecked());
+    expect(consentApi.setConsent).toHaveBeenCalledWith(true);
+    // 실제 API만 호출됐다 — mock/trial 동의 데이터는 전혀 건드리지 않는다.
+    expect(profileApi.updateProfile).not.toHaveBeenCalled();
+  });
+
+  describe('가드', () => {
+    it('프로필 미완료 상태로 /real/connect에 직접 접근하면 /real/profile로 보낸다', async () => {
+      vi.mocked(authApi.getSession).mockResolvedValue({
+        ok: true,
+        data: { authenticated: true, userId: 'u-a' },
+      });
+      vi.mocked(profileApi.getProfile).mockResolvedValue({
+        kind: 'ok',
+        status: 200,
+        data: { ...PROFILE_A, nickname: '' },
+      });
+      renderApp({ route: '/real/connect', session: { kind: 'real', userId: 'u-a' } });
+      expect(await screen.findByLabelText('닉네임')).toBeInTheDocument();
+    });
+
+    it('이미 연결된 계정이 /real/connect에 직접 접근하면 /real/home으로 되돌아간다(동의 화면은 예외)', async () => {
+      vi.mocked(authApi.getSession).mockResolvedValue({
+        ok: true,
+        data: { authenticated: true, userId: 'u-a' },
+      });
+      vi.mocked(profileApi.getProfile).mockResolvedValue({
+        kind: 'ok',
+        status: 200,
+        data: { ...PROFILE_A, couple_id: 'couple1' },
+      });
+      vi.mocked(coupleApi.getCouple).mockResolvedValue({
+        kind: 'ok',
+        status: 200,
+        data: {
+          id: 'couple1',
+          connected_at: '2025-01-01T00:00:00Z',
+          relationship_start_date: null,
+          is_seed: false,
+          partner: { nickname: '서연', avatar_emoji: '🐥' },
+        },
+      });
+
+      renderApp({ route: '/real/connect', session: { kind: 'real', userId: 'u-a' } });
+      expect(await screen.findByText(/서연님과 연결됐어요/)).toBeInTheDocument();
+    });
+
+    it('이미 연결된 계정도 /real/consent에는 그대로 접근할 수 있다', async () => {
+      vi.mocked(authApi.getSession).mockResolvedValue({
+        ok: true,
+        data: { authenticated: true, userId: 'u-a' },
+      });
+      vi.mocked(profileApi.getProfile).mockResolvedValue({
+        kind: 'ok',
+        status: 200,
+        data: { ...PROFILE_A, couple_id: 'couple1', analysis_consent: true },
+      });
+      renderApp({ route: '/real/consent', session: { kind: 'real', userId: 'u-a' } });
+      expect(await screen.findByRole('checkbox')).toBeChecked();
+    });
+
+    it('연결된 real 세션도 mock 전용 화면(/connect·/consent·/app/home)에는 여전히 접근할 수 없다', async () => {
+      vi.mocked(authApi.getSession).mockResolvedValue({
+        ok: true,
+        data: { authenticated: true, userId: 'u-a' },
+      });
+      vi.mocked(profileApi.getProfile).mockResolvedValue({
+        kind: 'ok',
+        status: 200,
+        data: { ...PROFILE_A, couple_id: 'couple1' },
+      });
+      vi.mocked(coupleApi.getCouple).mockResolvedValue({
+        kind: 'ok',
+        status: 200,
+        data: {
+          id: 'couple1',
+          connected_at: '2025-01-01T00:00:00Z',
+          relationship_start_date: null,
+          is_seed: false,
+          partner: { nickname: '서연', avatar_emoji: '🐥' },
+        },
+      });
+
+      renderApp({ route: '/app/home', session: { kind: 'real', userId: 'u-a' } });
+      // BlockRealAccounts가 여전히 real 계정을 mock 전용 라우트에서 걸러낸다.
+      expect(await screen.findByText(/서연님과 연결됐어요/)).toBeInTheDocument();
+      expect(screen.queryByText(/오늘의 우리/)).not.toBeInTheDocument();
+    });
   });
 });
 

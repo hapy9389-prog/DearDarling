@@ -19,6 +19,7 @@ export interface RealProfile {
   nickname: string;
   avatarEmoji: string;
   coupleId: string | null;
+  analysisConsent: boolean;
 }
 
 export function toRealProfile(row: ApiUserRow): RealProfile {
@@ -28,6 +29,7 @@ export function toRealProfile(row: ApiUserRow): RealProfile {
     nickname: row.nickname ?? '',
     avatarEmoji: row.avatar_emoji ?? '',
     coupleId: row.couple_id,
+    analysisConsent: row.analysis_consent,
   };
 }
 

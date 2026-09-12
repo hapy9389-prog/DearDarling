@@ -42,28 +42,8 @@ secret values in prompts, tool output, logs, diffs, screenshots, or reports.
   locations only; do not repeat values or claim external compromise without evidence.
 
 ## Enforcement limits
-- .claude/settings.json adds file-tool read restrictions. Check the loaded rules
+- .Codex/settings.json adds file-tool read restrictions. Check the loaded rules
   in /permissions before secret maintenance; use dummy values to verify blocking.
 - These rules are not OS isolation and do not guarantee protection against every
   subprocess. Never claim settings are active or tested merely because files exist.
 - No secret values or incident transcripts belong in these instruction files.
-
-## 개발 환경 실행·테스트 원칙
-
-- 웹·API 개발 서버와 SSH 터널을 시작하기 전에 기존 실행 여부와 포트 점유를 확인한다. 중복 실행하거나 다른 프로젝트의 프로세스를 종료하지 않는다.
-- 작업 종료 요청 시 이 프로젝트의 로컬 웹·API·SSH 터널만 종료한다. 별도 지시 없이 AWS EC2·PostgreSQL을 중지하지 않는다.
-- 실제 개발 DB에서 데이터 초기화·삭제를 수반하는 자동 테스트를 실행하지 않는다. 테스트 전에 접속 대상과 테스트 계정의 권한을 확인한다.
-- API는 시작 시 마이그레이션을 자동 적용할 수 있다. 마이그레이션 변경이 있는 상태에서 실행·재시작하기 전에 적용 대상과 범위를 확인한다.
-- 기존 비밀값 보호 지침을 유지한다. 실제 .env·비밀 파일을 테스트 작업 폴더로 복사하지 않는다.
-
-## 다음 작업 인수인계 — 변경 시 갱신
-
-- 원본 프로젝트: /Users/tunib02/DearDarling
-- 격리 작업 폴더: /Users/tunib02/dd-idempotency-worktree
-- 현재 선택한 방향: Docker 대신 기존 DearDarling EC2의 PostgreSQL 안에 별도 테스트 DB와 테스트 전용 계정을 마련한다. 기존 Docker 준비 파일은 보존하되 자동으로 Docker 설치·기동을 재개하지 않는다.
-- 마지막 보고 기준: AWS 테스트 DB·전용 계정 생성, API 통합 테스트, 초대 수락 멱등 처리 구현은 아직 미완료다.
-- 다음 순서: 테스트 코드의 DB 생성·초기화 방식 확인 → 기존 개발 DB와 권한을 분리하는 계획 제시 → 사용자 승인 후 생성·연결·통합 테스트.
-- 사용자가 마지막으로 확인한 수치: /data 전체 20GB 중 약 240MB 사용, 사용 가능한 메모리 약 1.5GiB. 과거 측정값이므로 실행 전 재확인한다.
-- 마지막 보고 기준으로 로컬 웹·API·DB 연결용 SSH 터널은 정상 종료됐다. 다음 작업 시작 전 실행 여부를 다시 확인한다.
-- 새 세션에서는 현재 Git 상태와 두 작업 폴더의 차이를 확인하고 기존 미커밋 변경을 보존한다.
-- 이 기록은 DB 생성·권한 변경·AWS 변경·커밋·푸시의 사전 승인이 아니다.

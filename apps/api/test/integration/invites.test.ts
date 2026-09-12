@@ -2,8 +2,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import request from 'supertest';
 import { buildTestApp, TEST_ALLOWED_ORIGIN } from '../helpers/app';
 import { getTestPool, resetTables } from '../helpers/db';
-import { createUser } from '../../src/repositories/usersRepository';
-import { createInvite, acceptInvite, InviteAcceptFailure } from '../../src/services/inviteService';
+import { createUser, updateProfile } from '../../src/repositories/usersRepository';
+import {
+  createInvite,
+  acceptInvite,
+  previewInvite,
+  InviteAcceptFailure,
+} from '../../src/services/inviteService';
 
 describe('invite + couple connection', () => {
   beforeEach(async () => {
@@ -26,6 +31,34 @@ describe('invite + couple connection', () => {
       invite.id,
     ]);
     const accepter = await createUser(pool, 'accepter@example.com');
+    await expect(acceptInvite(pool, invite.code, accepter.id, null)).rejects.toMatchObject({
+      reason: 'expired',
+    });
+  });
+
+  it('rejects on time-based expiry even though the rolled-back UPDATE never persists status=expired', async () => {
+    // acceptInvite가 만료를 감지했을 때 상태를 'expired'로 갱신하는 문장은, 뒤이어 던지는
+    // InviteAcceptFailure 때문에 트랜잭션이 곧 ROLLBACK된다 — 즉 이 UPDATE는 커밋되지
+    // 않는다. 거절 자체는 expires_at 기준(시간)으로만 일어난다는 것을, 거절 뒤에도 DB 상태가
+    // 'pending' 그대로임을 확인해 증명한다. "만료 상태가 DB에 영구 저장된다"고 가정하지 않는다.
+    const pool = await getTestPool();
+    const inviter = await createUser(pool, 'inviter@example.com');
+    const accepter = await createUser(pool, 'accepter@example.com');
+    const invite = await createInvite(pool, inviter.id);
+    await pool.query(`UPDATE invites SET expires_at = now() - interval '1 hour' WHERE id = $1`, [
+      invite.id,
+    ]);
+
+    await expect(acceptInvite(pool, invite.code, accepter.id, null)).rejects.toMatchObject({
+      reason: 'expired',
+    });
+
+    const { rows } = await pool.query<{ status: string }>('SELECT status FROM invites WHERE id = $1', [
+      invite.id,
+    ]);
+    // 롤백됐으므로 'expired'로 남지 않고 'pending' 그대로다 — 그럼에도 재시도하면 여전히
+    // (시간 기준으로) 거절된다는 것까지 함께 확인한다.
+    expect(rows[0]?.status).toBe('pending');
     await expect(acceptInvite(pool, invite.code, accepter.id, null)).rejects.toMatchObject({
       reason: 'expired',
     });
@@ -251,6 +284,120 @@ describe('invite + couple connection', () => {
         [inviterA.id, inviterB.id],
       );
       expect(rows).toHaveLength(2);
+    });
+  });
+
+  describe('GET /:code preview', () => {
+    it('returns the inviter nickname/avatar for a valid pending invite, without using it', async () => {
+      const pool = await getTestPool();
+      const inviter = await createUser(pool, 'inviter@example.com');
+      await updateProfile(pool, inviter.id, { nickname: '민준', avatarEmoji: '🐻' });
+      const viewer = await createUser(pool, 'viewer@example.com');
+      const invite = await createInvite(pool, inviter.id);
+
+      const preview = await previewInvite(pool, invite.code, viewer.id);
+      expect(preview).toEqual({ inviter_nickname: '민준', inviter_avatar_emoji: '🐻' });
+
+      // 조회만으로 사용 처리·연결이 일어나지 않는다.
+      const { rows: inviteRows } = await pool.query<{ status: string }>(
+        'SELECT status FROM invites WHERE id = $1',
+        [invite.id],
+      );
+      expect(inviteRows[0]?.status).toBe('pending');
+      const { rows: coupleRows } = await pool.query('SELECT * FROM couples');
+      expect(coupleRows).toHaveLength(0);
+    });
+
+    it('returns the same 409 reasons as accept for not-found/revoked/already-accepted/expired/self/already-connected', async () => {
+      const pool = await getTestPool();
+      const inviter = await createUser(pool, 'inviter@example.com');
+      const viewer = await createUser(pool, 'viewer@example.com');
+
+      await expect(previewInvite(pool, 'DD-000000', viewer.id)).rejects.toMatchObject({
+        reason: 'not-found',
+      });
+
+      const selfInvite = await createInvite(pool, inviter.id);
+      await expect(previewInvite(pool, selfInvite.code, inviter.id)).rejects.toMatchObject({
+        reason: 'self',
+      });
+
+      await pool.query(`UPDATE invites SET expires_at = now() - interval '1 hour' WHERE id = $1`, [
+        selfInvite.id,
+      ]);
+      await expect(previewInvite(pool, selfInvite.code, viewer.id)).rejects.toMatchObject({
+        reason: 'expired',
+      });
+
+      const revokedInviter = await createUser(pool, 'revoked-inviter@example.com');
+      const revokedInvite = await createInvite(pool, revokedInviter.id);
+      await pool.query(`UPDATE invites SET status = 'revoked' WHERE id = $1`, [revokedInvite.id]);
+      await expect(previewInvite(pool, revokedInvite.code, viewer.id)).rejects.toMatchObject({
+        reason: 'revoked',
+      });
+
+      const acceptedInviter = await createUser(pool, 'accepted-inviter@example.com');
+      const acceptedAccepter = await createUser(pool, 'accepted-accepter@example.com');
+      const acceptedInvite = await createInvite(pool, acceptedInviter.id);
+      await acceptInvite(pool, acceptedInvite.code, acceptedAccepter.id, null);
+      await expect(previewInvite(pool, acceptedInvite.code, viewer.id)).rejects.toMatchObject({
+        reason: 'already-accepted',
+      });
+
+      const connectedInviter = await createUser(pool, 'connected-inviter@example.com');
+      const connectedPartner = await createUser(pool, 'connected-partner@example.com');
+      const inviterConnectInvite = await createInvite(pool, connectedInviter.id);
+      await acceptInvite(pool, inviterConnectInvite.code, connectedPartner.id, null);
+      const newInviteFromConnectedInviter = await createUser(pool, 'irrelevant@example.com'); // 새 초대자
+      const anotherInvite = await createInvite(pool, newInviteFromConnectedInviter.id);
+      // connectedInviter가 이미 연결돼 있는 상태에서, 그가 만든 것이 아닌 다른 사람의 초대를
+      // "이미 연결된 사용자"가 미리보기하면 accepter-already-connected가 나와야 한다.
+      await expect(previewInvite(pool, anotherInvite.code, connectedInviter.id)).rejects.toMatchObject(
+        { reason: 'accepter-already-connected' },
+      );
+    });
+
+    it('requires authentication at the HTTP layer', async () => {
+      const app = await buildTestApp();
+      const pool = await getTestPool();
+      const inviter = await createUser(pool, 'inviter@example.com');
+      const invite = await createInvite(pool, inviter.id);
+
+      await request(app)
+        .get(`/api/invites/${invite.code}`)
+        .set('Origin', TEST_ALLOWED_ORIGIN)
+        .expect(401);
+    });
+
+    it('never includes email or other account fields in the preview response', async () => {
+      const app = await buildTestApp();
+      const pool = await getTestPool();
+      const inviter = await createUser(pool, 'inviter@example.com');
+      await updateProfile(pool, inviter.id, { nickname: '민준', avatarEmoji: '🐻' });
+      const viewer = await createUser(pool, 'viewer@example.com');
+      const invite = await createInvite(pool, inviter.id);
+
+      const res = await request(app)
+        .get(`/api/invites/${invite.code}`)
+        .set('X-Test-User-Id', viewer.id)
+        .expect(200);
+
+      expect(Object.keys(res.body).sort()).toEqual(['inviter_avatar_emoji', 'inviter_nickname']);
+    });
+
+    it('rate-limits repeated preview lookups by the same user', async () => {
+      const app = await buildTestApp();
+      const pool = await getTestPool();
+      const inviter = await createUser(pool, 'inviter@example.com');
+      const viewer = await createUser(pool, 'viewer@example.com');
+      const invite = await createInvite(pool, inviter.id);
+
+      const attempts = Array.from({ length: 21 }, () =>
+        request(app).get(`/api/invites/${invite.code}`).set('X-Test-User-Id', viewer.id),
+      );
+      const responses = await Promise.all(attempts.map((req) => req));
+      const rateLimited = responses.filter((res) => res.status === 429);
+      expect(rateLimited.length).toBeGreaterThan(0);
     });
   });
 });

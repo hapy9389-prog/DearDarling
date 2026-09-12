@@ -86,3 +86,7 @@ export function apiGet<T = unknown>(path: string): Promise<Outcome<T>> {
 export function apiPatch<T = unknown>(path: string, body: unknown): Promise<Outcome<T>> {
   return apiRequest<T>(path, { method: 'PATCH', body: JSON.stringify(body) });
 }
+
+export function apiPut<T = unknown>(path: string, body: unknown): Promise<Outcome<T>> {
+  return apiRequest<T>(path, { method: 'PUT', body: JSON.stringify(body) });
+}
