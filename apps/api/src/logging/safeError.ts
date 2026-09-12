@@ -29,6 +29,32 @@ export function classifyError(err: unknown): string {
   return 'non-error-thrown';
 }
 
+// cognito/cognitoAuthPort.ts가 "확정 거절"로 판정하는 예외 이름과 같은 값들이다 — 하지만 그
+// 목록을 가져다 쓰지 않고 여기 따로 적어 둔다. AuthPortRejectedError.code는 인스턴스를 만들 때
+// 자유롭게 넣을 수 있는 문자열 필드라, 그 값을 그대로 신뢰해 로그에 남기면 나중에 다른 코드
+// 경로가 임의 문자열을 넣어도(또는 실수로 메시지 일부를 code에 넣어도) 그대로 로그에 남는다 —
+// KNOWN_PG_ERROR_CODES와 같은 이유로, 여기 명시적으로 적어 둔 이름과 정확히 일치할 때만 남기고
+// 그 외는 전부 'unknown'으로 남긴다.
+const KNOWN_COGNITO_REJECTION_NAMES = new Set([
+  'CodeMismatchException',
+  'ExpiredCodeException',
+  'UserNotFoundException',
+  'NotAuthorizedException',
+  'UserNotConfirmedException',
+  'InvalidPasswordException',
+  'InvalidParameterException',
+  'UsernameExistsException',
+  'AliasExistsException',
+  'PasswordResetRequiredException',
+  'CodeDeliveryFailureException',
+]);
+
+/** `AuthPortRejectedError.code`(Cognito 예외 이름)를 안전하게 분류한다 — 위 허용목록에 정확히
+ * 있는 값만 그대로 남기고, 그 외(목록에 없거나 애초에 없음)는 전부 'unknown'이다. */
+export function classifyCognitoRejectionCode(code: unknown): string {
+  return typeof code === 'string' && KNOWN_COGNITO_REJECTION_NAMES.has(code) ? code : 'unknown';
+}
+
 /**
  * 요청을 "어느 라우트였는지"로만 안전하게 남긴다 — req.path나 req.originalUrl(사용자가 보낸
  * 실제 URL, 비밀값이 경로 세그먼트로 들어올 수 있다)은 절대 쓰지 않는다. req.baseUrl(라우터를

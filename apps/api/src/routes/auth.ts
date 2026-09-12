@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/testAuth';
 import { createRateLimiter } from '../middleware/rateLimit';
 import { setSessionCookie, clearSessionCookie } from '../http/sessionCookie';
 import { validateEmail, validatePassword, normalizeEmail } from '../domain/auth';
+import { classifyCognitoRejectionCode, safeRouteLabel } from '../logging/safeError';
 import {
   AuthPortRejectedError,
   AuthPortTimeoutError,
@@ -72,11 +73,27 @@ export function createAuthRouter(
         res.status(200).json({ ok: true });
       } catch (err) {
         if (err instanceof AuthPortRejectedError) {
+          // 진단용 로그 — requestId·고정 라우트명·상태·허용목록에 있는 Cognito 오류 이름만
+          // 남긴다. 이메일·비밀번호·err.message(Cognito가 돌려준 원문일 수 있다)는 남기지 않는다.
+          console.error('[auth:signup]', {
+            requestId: req.requestId,
+            route: safeRouteLabel(req),
+            status: 400,
+            cognitoError: classifyCognitoRejectionCode(err.code),
+          });
           res.status(400).json({ error: 'signup-rejected' });
           return;
         }
         if (err instanceof AuthPortTimeoutError) {
           // Cognito 쪽에서 실제로는 가입이 됐을 수도, 안 됐을 수도 있다 — 실패로 단정하지 않는다.
+          // 이 경우는 특정 Cognito 예외로 확정되지 않은 상태(타임아웃·연결 끊김 등)라 이름 자체가
+          // 없다 — 'timeout'으로 고정해 남긴다.
+          console.error('[auth:signup]', {
+            requestId: req.requestId,
+            route: safeRouteLabel(req),
+            status: 202,
+            cognitoError: 'timeout',
+          });
           res.status(202).json({
             status: 'unknown',
             message:

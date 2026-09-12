@@ -37,3 +37,21 @@ export function RedirectIfAuthed() {
   if (status !== 'anonymous') return <Navigate to={landingPathFor(status)} replace />;
   return <Outlet />;
 }
+
+/**
+ * 실제 계정(`kind: 'real'`)은 초대·동의·`/app/*`(가상 커플 데이터를 전제로 하는 화면)로 들어갈
+ * 수 없다 — 이번 범위는 프로필까지다. 프로필에 이미 coupleId가 들어 있어도(다음 단계 연결 이후)
+ * 예외 없이 `/real/*`로 되돌린다. 직접 URL 접근도 막는다.
+ */
+export function BlockRealAccounts() {
+  const { session, status } = useSession();
+  if (session?.kind === 'real') return <Navigate to={landingPathFor(status)} replace />;
+  return <Outlet />;
+}
+
+/** `/real/*`는 실제 계정 전용이다 — trial·review가 URL로 들어오면 자기 영역으로 돌려보낸다. */
+export function RequireRealAccount() {
+  const { session, status } = useSession();
+  if (session?.kind !== 'real') return <Navigate to={landingPathFor(status)} replace />;
+  return <Outlet />;
+}

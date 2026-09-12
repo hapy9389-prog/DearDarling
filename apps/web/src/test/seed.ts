@@ -9,7 +9,9 @@ const INVITES_KEY = trialKey('invites');
 
 /** 통합 테스트에서 `renderApp({ session })`로 넘길 세션 시드. */
 export type SeededSession =
-  { kind: 'review'; accountId: 'user-minjun' | 'user-seoyeon' } | { kind: 'trial'; userId: string };
+  | { kind: 'review'; accountId: 'user-minjun' | 'user-seoyeon' }
+  | { kind: 'trial'; userId: string }
+  | { kind: 'real'; userId: string };
 
 /** 기존 민준·서연 검토 모드 세션(대부분의 기존 통합 테스트가 이걸 쓴다). */
 export function seedReviewSession(

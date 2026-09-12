@@ -11,30 +11,45 @@
 # - 인증 흐름(1~9단계)과 DB 정리 확인(10단계)의 결과를 구분해서 보고한다 — DB 쪽을 확인할 수
 #   없다고 해서 전체를 실패로 만들지 않고, 반대로 확인 못 한 것을 완료로 보고하지도 않는다.
 #
-# 사용법: ./infra/cognito/verify-auth-flow.sh [--repo-root PATH] [--resume-from-login]
+# 사용법: ./infra/cognito/verify-auth-flow.sh [--repo-root PATH] [--resume-from-login] [--origin URL]
 #   --repo-root PATH        자체 테스트 전용.
 #   --resume-from-login     이미 가입·인증까지 끝난 기존 테스트 계정으로 6-2단계부터 이어서
 #                            검증한다(1~6-1단계는 건너뛴다) — 6-2 이후는 6-2에서 새로 로그인하는
 #                            구조라 앞 단계 상태에 의존하지 않는다. 회원가입을 다시 시도하면
 #                            Cognito가 UsernameExistsException으로 거부하므로, 같은 계정으로
 #                            재시도할 때는 이 플래그를 쓴다.
+#   --origin URL            상태 변경 요청에 실어 보낼 Origin 헤더 값(비밀 아님). 생략하면
+#                            apps/api/.env의 ALLOWED_ORIGIN을 그대로 읽어 쓴다(서버가 실제로
+#                            기대하는 값과 항상 같게 유지하기 위해서다 — apps/web을 붙인 뒤에는
+#                            보통 http://127.0.0.1:5173). VERIFY_ORIGIN 환경변수로도 줄 수
+#                            있다(플래그가 있으면 플래그가 우선).
 # 사전조건: apps/api에서 pnpm dev가 이미 떠 있고, .env의 LOCAL_TEST_AUTH가 true가 아님.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 RESUME_FROM_LOGIN=0
+ORIGIN_OVERRIDE="${VERIFY_ORIGIN:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --repo-root) REPO_ROOT="$(cd "$2" && pwd)"; shift 2 ;;
     --resume-from-login) RESUME_FROM_LOGIN=1; shift ;;
+    --origin) ORIGIN_OVERRIDE="$2"; shift 2 ;;
     *) shift ;;
   esac
 done
 ENV_FILE="$REPO_ROOT/apps/api/.env"
 
 BASE="http://127.0.0.1:3000"
-ORIGIN="http://127.0.0.1:3000"
+if [ -n "$ORIGIN_OVERRIDE" ]; then
+  ORIGIN="$ORIGIN_OVERRIDE"
+else
+  ORIGIN="$(node "$SCRIPT_DIR/env-lib.mjs" get "$ENV_FILE" ALLOWED_ORIGIN 2>/dev/null || true)"
+  if [ -z "$ORIGIN" ]; then
+    echo "실패: apps/api/.env에서 ALLOWED_ORIGIN을 읽지 못했습니다 — --origin으로 직접 지정하세요." >&2
+    exit 1
+  fi
+fi
 POLL_ATTEMPTS="${CLEANUP_POLL_ATTEMPTS:-5}"
 POLL_INTERVAL_SECONDS="${CLEANUP_POLL_INTERVAL_SECONDS:-30}"
 
