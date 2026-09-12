@@ -1,0 +1,28 @@
+{
+  "Policies": {
+    "PasswordPolicy": {
+      "MinimumLength": 8,
+      "RequireUppercase": false,
+      "RequireLowercase": false,
+      "RequireNumbers": true,
+      "RequireSymbols": false,
+      "TemporaryPasswordValidityDays": 7
+    }
+  },
+  "AutoVerifiedAttributes": ["email"],
+  "UsernameAttributes": ["email"],
+  "UsernameConfiguration": { "CaseSensitive": false },
+  "MfaConfiguration": "OFF",
+  "AccountRecoverySetting": {
+    "RecoveryMechanisms": [{ "Priority": 1, "Name": "verified_email" }]
+  },
+  "AdminCreateUserConfig": { "AllowAdminCreateUserOnly": false },
+  "EmailConfiguration": { "EmailSendingAccount": "COGNITO_DEFAULT" },
+  "VerificationMessageTemplate": { "DefaultEmailOption": "CONFIRM_WITH_CODE" },
+  "Schema": [
+    { "Name": "email", "AttributeDataType": "String", "Required": true, "Mutable": true }
+  ],
+  "UserPoolTier": "LITE",
+  "DeletionProtection": "ACTIVE",
+  "UserPoolTags": { "Project": "DearDarling", "Environment": "dev" }
+}

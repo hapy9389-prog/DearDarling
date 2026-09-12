@@ -1,0 +1,87 @@
+#!/bin/bash
+# verify-auth-flow.sh를 실제 서버 없이 검증하기 위한 가짜 curl. 실제 네트워크 호출을 절대
+# 하지 않는다. FAKE_HTTP_MODE로 오류 시나리오를 고르고, FAKE_HTTP_STATE_DIR에 "세션 토큰 →
+# active/revoked" 상태를 기록해 login/me/logout/logout-all 사이의 인과관계를 재현한다.
+set -euo pipefail
+MODE="${FAKE_HTTP_MODE:-happy}"
+STATE_DIR="${FAKE_HTTP_STATE_DIR:?FAKE_HTTP_STATE_DIR 필요}"
+mkdir -p "$STATE_DIR/tokens"
+
+OUT_FILE="/dev/null"; JAR_WRITE=""; JAR_READ=""
+args=("$@")
+n=${#args[@]}
+i=0
+while [ $i -lt $n ]; do
+  a="${args[$i]}"
+  case "$a" in
+    -o) i=$((i + 1)); OUT_FILE="${args[$i]}" ;;
+    -c) i=$((i + 1)); JAR_WRITE="${args[$i]}" ;;
+    -b) i=$((i + 1)); JAR_READ="${args[$i]}" ;;
+  esac
+  i=$((i + 1))
+done
+URL="${args[$((n - 1))]}"
+PATH_ONLY="$(printf '%s' "$URL" | sed -E 's#^https?://[^/]+##')"
+
+read_cookie_token() {  # $1=jar파일 -> dd_session 값(없으면 빈 문자열)
+  [ -f "$1" ] || { printf ''; return 0; }
+  awk -F'\t' '$6=="dd_session"{print $7}' "$1" | tail -1
+}
+write_cookie_token() {  # $1=jar파일 $2=token
+  { echo '# Netscape HTTP Cookie File'; printf '127.0.0.1\tFALSE\t/\tFALSE\t0\tdd_session\t%s\n' "$2"; } > "$1"
+}
+clear_cookie() {  # $1=jar파일 -> dd_session 줄 제거(서버의 만료 지시를 흉내)
+  [ -f "$1" ] || return 0
+  awk -F'\t' '$6 != "dd_session"' "$1" > "$1.tmp" && mv "$1.tmp" "$1"
+}
+mark_token() { printf '%s' "$2" > "$STATE_DIR/tokens/$1.status"; }  # $1=token $2=active|revoked
+token_status() { [ -f "$STATE_DIR/tokens/$1.status" ] && cat "$STATE_DIR/tokens/$1.status" || echo "revoked"; }
+new_token() {
+  local c
+  c="$(cat "$STATE_DIR/counter" 2>/dev/null || echo 0)"
+  c=$((c + 1))
+  echo "$c" > "$STATE_DIR/counter"
+  printf 'tok%03d' "$c"
+}
+emit() { printf '%s' "${2:-}" > "$OUT_FILE"; printf '%s' "$1"; }  # $1=http_code $2=body
+
+case "$PATH_ONLY" in
+  /api/auth/signup | /api/auth/confirm-signup | /api/auth/forgot-password | /api/auth/confirm-forgot-password)
+    emit 200 '{}'
+    ;;
+  /api/auth/login)
+    TOKEN="$(new_token)"
+    mark_token "$TOKEN" active
+    [ -n "$JAR_WRITE" ] && write_cookie_token "$JAR_WRITE" "$TOKEN"
+    emit 200 '{}'
+    ;;
+  /api/auth/me)
+    T="$(read_cookie_token "${JAR_READ:-/nonexistent}")"
+    if [ -n "$T" ] && [ "$(token_status "$T")" = "active" ]; then
+      emit 200 '{"authenticated":true,"userId":"u1"}'
+    else
+      emit 200 '{"authenticated":false}'
+    fi
+    ;;
+  /api/auth/logout)
+    if [ "$MODE" = "logout_error" ]; then
+      emit 500 '{"error":"fake"}'
+    else
+      T="$(read_cookie_token "${JAR_READ:-/nonexistent}")"
+      [ -n "$T" ] && mark_token "$T" revoked
+      [ -n "$JAR_WRITE" ] && clear_cookie "$JAR_WRITE"
+      emit 204 ''
+    fi
+    ;;
+  /api/auth/logout-all)
+    if [ "$MODE" = "logout_all_error" ]; then
+      emit 500 '{"error":"fake"}'
+    else
+      for f in "$STATE_DIR"/tokens/*.status; do [ -f "$f" ] && printf 'revoked' > "$f"; done
+      emit 204 ''
+    fi
+    ;;
+  *)
+    emit 404 '{"error":"fake-not-found"}'
+    ;;
+esac

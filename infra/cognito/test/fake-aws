@@ -1,0 +1,82 @@
+#!/bin/bash
+# create-dev-pool.sh를 실제 AWS 호출 없이 검증하기 위한 가짜 aws CLI. 실제 네트워크 호출을 절대 하지 않는다.
+# FAKE_AWS_MODE로 시나리오를 고른다. FAKE_AWS_CALL_LOG가 설정돼 있으면 호출 인자를 한 줄씩 기록한다
+# (테스트가 "어떤 AWS 호출이 실제로 몇 번 일어났는지"를 검증할 수 있게 하기 위해서다).
+set -euo pipefail
+MODE="${FAKE_AWS_MODE:-happy_path}"
+if [ -n "${FAKE_AWS_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$FAKE_AWS_CALL_LOG"; fi
+
+find_sub() {
+  for a in "$@"; do
+    case "$a" in
+      get-caller-identity|list-user-pools|create-user-pool|describe-user-pool|list-user-pool-clients|create-user-pool-client|describe-user-pool-client)
+        echo "$a"; return 0 ;;
+    esac
+  done
+  echo "unknown"
+}
+SUB="$(find_sub "$@")"
+
+case "$SUB" in
+  get-caller-identity)
+    echo '{"UserId":"FAKEID","Account":"539746929196","Arn":"arn:aws:iam::539746929196:user/max.ai"}'
+    ;;
+
+  list-user-pools)
+    case "$MODE" in
+      list_denied)
+        echo "An error occurred (AccessDeniedException) when calling ListUserPools: fake" >&2; exit 254 ;;
+      reuse_multi_match)
+        echo '{"UserPools":[{"Id":"ap-northeast-2_A","Name":"deardarling-dev-user-pool"},{"Id":"ap-northeast-2_B","Name":"deardarling-dev-user-pool"}]}' ;;
+      reuse_tag_mismatch)
+        echo '{"UserPools":[{"Id":"ap-northeast-2_TAGGED","Name":"deardarling-dev-user-pool"}]}' ;;
+      reuse_success|reuse_client_describe_denied|reuse_client_wrong_pool)
+        echo '{"UserPools":[{"Id":"ap-northeast-2_REUSED","Name":"deardarling-dev-user-pool"}]}' ;;
+      *)
+        echo '{"UserPools":[]}' ;;
+    esac
+    ;;
+
+  describe-user-pool)
+    case "$MODE" in
+      reuse_tag_mismatch)
+        echo '{"UserPool":{"UserPoolTags":{"Project":"OtherApp","Environment":"prod"}}}' ;;
+      reuse_success|reuse_client_describe_denied|reuse_client_wrong_pool)
+        echo '{"UserPool":{"UserPoolTags":{"Project":"DearDarling","Environment":"dev"}}}' ;;
+      *)
+        echo "fake: describe-user-pool AccessDenied" >&2; exit 254 ;;
+    esac
+    ;;
+
+  create-user-pool)
+    if [ "$MODE" = "create_lost_response" ]; then echo "fake: connection timed out" >&2; exit 1; fi
+    echo '{"UserPool":{"Id":"ap-northeast-2_FAKE123","Name":"deardarling-dev-user-pool"}}'
+    ;;
+
+  list-user-pool-clients)
+    case "$MODE" in
+      reuse_success|reuse_client_describe_denied|reuse_client_wrong_pool)
+        echo '{"UserPoolClients":[{"ClientId":"fakeclientid","ClientName":"deardarling-dev-api-server"}]}' ;;
+      *)
+        echo '{"UserPoolClients":[]}' ;;
+    esac
+    ;;
+
+  describe-user-pool-client)
+    case "$MODE" in
+      reuse_success)
+        echo '{"UserPoolClient":{"UserPoolId":"ap-northeast-2_REUSED","ClientId":"fakeclientid","ClientSecret":"REUSEDSECRETVALUE"}}' ;;
+      reuse_client_wrong_pool)
+        echo '{"UserPoolClient":{"UserPoolId":"ap-northeast-2_DIFFERENT","ClientId":"fakeclientid","ClientSecret":"SHOULDNOTUSE"}}' ;;
+      *)
+        echo "fake: describe-user-pool-client AccessDenied" >&2; exit 254 ;;
+    esac
+    ;;
+
+  create-user-pool-client)
+    echo '{"UserPoolClient":{"ClientId":"fakeclientid2","ClientSecret":"FAKESECRETVALUE"}}'
+    ;;
+
+  *)
+    echo "fake-aws: 처리 안 된 서브커맨드: $*" >&2; exit 1 ;;
+esac

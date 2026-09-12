@@ -1,0 +1,16 @@
+#!/bin/bash
+# verify-auth-flow.sh의 DB 확인 로직을 실제 DB 없이 검증하기 위한 가짜 psql. 실제 접속을 절대
+# 하지 않는다. FAKE_PSQL_MODE로 시나리오를 고른다.
+MODE="${FAKE_PSQL_MODE:-normal}"
+case "$MODE" in
+  normal) echo "f" ;;                                    # 정상: 정리 완료
+  pending) echo "t" ;;                                   # 계속 대기 중(타임아웃 테스트용, 매번 t)
+  empty) echo "" ;;                                       # 조회 대상 행 없음
+  exec_fail)
+    # 접속정보(DSN)처럼 보이는 문자열을 일부러 섞은 오류 — 이 문자열이 verify-auth-flow.sh의
+    # 출력에 그대로 나오면 안 된다(오류 원문을 출력하지 않는지 확인하는 테스트용).
+    echo "psql: error: connection to server failed: FAKE_DSN_SECRET_MARKER postgresql://u:p@h/db" >&2
+    exit 2
+    ;;
+  *) echo "f" ;;
+esac
