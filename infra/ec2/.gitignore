@@ -1,0 +1,6 @@
+state.local.json
+*.local.json
+*.pem
+*.dump
+*.dump.gz
+*-key.txt

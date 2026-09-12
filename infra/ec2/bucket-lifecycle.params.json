@@ -1,0 +1,10 @@
+{
+  "Rules": [
+    {
+      "ID": "expire-postgres-logical-backups",
+      "Filter": { "Prefix": "postgres/dev/" },
+      "Status": "Enabled",
+      "Expiration": { "Days": 14 }
+    }
+  ]
+}

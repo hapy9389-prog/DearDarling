@@ -1,0 +1,22 @@
+{
+  "_comment": "admin에게 전달할 dlm create-lifecycle-policy --policy-details 값. --execution-role-arn은 계정의 AWSDataLifecycleManagerDefaultRole(서비스 연결 역할) ARN을 admin이 채워 넣는다 — 이 역할이 계정에 이미 있는지부터 admin이 확인해야 한다(infra/ec2/README.md 참고).",
+  "PolicyDetails": {
+    "ResourceTypes": ["VOLUME"],
+    "TargetTags": [
+      { "Key": "Project", "Value": "DearDarling" },
+      { "Key": "Role", "Value": "postgres-data" }
+    ],
+    "Schedules": [
+      {
+        "Name": "deardarling-dev-daily-snapshot",
+        "TagsToAdd": [
+          { "Key": "Project", "Value": "DearDarling" },
+          { "Key": "Environment", "Value": "dev" }
+        ],
+        "CreateRule": { "Interval": 24, "IntervalUnit": "HOURS", "Times": ["03:00"] },
+        "RetainRule": { "Count": 7 },
+        "CopyTags": true
+      }
+    ]
+  }
+}

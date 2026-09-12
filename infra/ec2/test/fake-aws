@@ -1,0 +1,246 @@
+#!/bin/bash
+# create-dev-server.sh를 실제 AWS 호출 없이 검증하기 위한 가짜 aws CLI. 실제 네트워크 호출을
+# 절대 하지 않는다. FAKE_AWS_MODE로 시나리오를 고른다. FAKE_AWS_CALL_LOG가 설정돼 있으면 호출
+# 인자를 한 줄씩 기록한다(테스트가 "어떤 AWS 호출이 실제로 몇 번 일어났는지" 검증할 수 있게).
+set -uo pipefail
+MODE="${FAKE_AWS_MODE:-happy_check}"
+if [ -n "${FAKE_AWS_CALL_LOG:-}" ]; then printf '%s\n' "$*" >> "$FAKE_AWS_CALL_LOG"; fi
+
+find_sub() {
+  for a in "$@"; do
+    case "$a" in
+      get-caller-identity|get-role|get-instance-profile|describe-vpcs|describe-subnets|describe-images|\
+      describe-security-groups|create-security-group|authorize-security-group-ingress|\
+      describe-key-pairs|create-key-pair|allocate-address|describe-volumes|create-volume|\
+      describe-instances|run-instances|attach-volume|associate-address|create-tags|\
+      head-bucket|create-bucket|get-bucket-tagging|put-bucket-tagging|put-public-access-block|\
+      put-bucket-encryption|put-bucket-lifecycle-configuration|instance-running|\
+      describe-iam-instance-profile-associations|associate-iam-instance-profile|describe-addresses)
+        echo "$a"; return 0 ;;
+    esac
+  done
+  echo "unknown"
+}
+SUB="$(find_sub "$@")"
+
+is_check_dryrun() { for a in "$@"; do [ "$a" = "--dry-run" ] && return 0; done; return 1; }
+
+case "$SUB" in
+  get-caller-identity)
+    echo '{"UserId":"FAKEID","Account":"539746929196","Arn":"arn:aws:iam::539746929196:user/max.ai"}'
+    ;;
+
+  get-role)
+    if [ "$MODE" = "missing_iam_role" ]; then
+      echo "An error occurred (NoSuchEntity) when calling GetRole: fake" >&2; exit 254
+    fi
+    echo '{"Role":{"RoleName":"deardarling-dev-ec2-role"}}'
+    ;;
+
+  get-instance-profile)
+    echo '{"InstanceProfile":{"InstanceProfileName":"deardarling-dev-ec2-profile"}}'
+    ;;
+
+  describe-vpcs)
+    if [ "$MODE" = "ambiguous_vpc" ]; then
+      echo '{"Vpcs":[{"VpcId":"vpc-a"},{"VpcId":"vpc-b"}]}'
+    else
+      echo '{"Vpcs":[{"VpcId":"vpc-a443ddcf","CidrBlock":"172.31.0.0/16"}]}'
+    fi
+    ;;
+
+  describe-subnets)
+    echo '{"Subnets":[{"SubnetId":"subnet-fake1","AvailabilityZone":"ap-northeast-2a","MapPublicIpOnLaunch":true}]}'
+    ;;
+
+  describe-images)
+    echo '{"Images":[{"ImageId":"ami-fake123","Name":"al2023-ami-2023.12.fake-arm64","CreationDate":"2026-09-09T00:00:00.000Z","RootDeviceName":"/dev/xvda"}]}'
+    ;;
+
+  head-bucket)
+    if [ "$MODE" = "bucket_state_mismatch" ]; then
+      echo "An error occurred (404) when calling HeadBucket: Not Found" >&2; exit 254
+    fi
+    exit 0
+    ;;
+
+  create-bucket)
+    if [ "$MODE" = "bucket_already_exists_elsewhere" ]; then
+      echo "An error occurred (BucketAlreadyExists) when calling CreateBucket: fake" >&2; exit 254
+    fi
+    exit 0
+    ;;
+
+  get-bucket-tagging)
+    echo '{"TagSet":[{"Key":"Project","Value":"DearDarling"},{"Key":"Environment","Value":"dev"}]}'
+    ;;
+  put-bucket-tagging|put-public-access-block|put-bucket-encryption|put-bucket-lifecycle-configuration)
+    exit 0 ;;
+
+  describe-security-groups)
+    if printf '%s\n' "$*" | grep -q -- "group-name,Values=default"; then
+      echo '{"SecurityGroups":[{"GroupId":"sg-defaultfake"}]}'
+    elif printf '%s\n' "$*" | grep -q -- "deardarling-dev-ec2-sg"; then
+      if [ "$MODE" = "sg_reuse" ]; then
+        echo '{"SecurityGroups":[{"GroupId":"sg-reusedfake","IpPermissions":[]}]}'
+      else
+        echo '{"SecurityGroups":[]}'
+      fi
+    else
+      # group-ids 조회(생성 직후 상세 조회) — 인그레스 없음으로 응답
+      echo '{"SecurityGroups":[{"GroupId":"sg-newfake","IpPermissions":[]}]}'
+    fi
+    ;;
+
+  create-security-group)
+    if is_check_dryrun "$@"; then
+      echo "An error occurred (DryRunOperation) when calling CreateSecurityGroup: fake" >&2; exit 254
+    fi
+    echo '{"GroupId":"sg-newfake"}'
+    ;;
+
+  authorize-security-group-ingress) exit 0 ;;
+
+  describe-key-pairs)
+    if [ "$MODE" = "keypair_reuse" ]; then
+      echo '{"KeyPairs":[{"KeyName":"deardarling-dev-ec2-key"}]}'
+    else
+      echo '{"KeyPairs":[]}'
+    fi
+    ;;
+
+  create-key-pair)
+    if is_check_dryrun "$@"; then
+      echo "An error occurred (DryRunOperation) when calling CreateKeyPair: fake" >&2; exit 254
+    fi
+    # 실제 스크립트는 --query KeyMaterial --output text로 받으므로(JSON 파싱 취약점 회피,
+    # 자세한 이유는 create-dev-server.sh 주석 참고) 여기서도 그 형태(순수 텍스트, 여러 줄 PEM)로 응답한다.
+    printf -- '-----BEGIN RSA PRIVATE KEY-----\nFAKEFAKEFAKEFAKEFAKEFAKEFAKEFAKE\n-----END RSA PRIVATE KEY-----\n'
+    ;;
+
+  allocate-address)
+    if is_check_dryrun "$@"; then
+      echo "An error occurred (DryRunOperation) when calling AllocateAddress: fake" >&2; exit 254
+    fi
+    echo "eipalloc-fake"
+    ;;
+
+  describe-volumes)
+    if [ "$MODE" = "data_volume_missing" ]; then
+      echo "An error occurred (InvalidVolume.NotFound) when calling DescribeVolumes: fake" >&2; exit 254
+    fi
+    case "$MODE" in
+      conn_vol_attached_same|conn_all_attached_same)
+        echo '{"Volumes":[{"VolumeId":"vol-existingfake","State":"in-use","Attachments":[{"State":"attached","InstanceId":"i-existingfake"}]}]}' ;;
+      conn_vol_attached_other)
+        echo '{"Volumes":[{"VolumeId":"vol-existingfake","State":"in-use","Attachments":[{"State":"attached","InstanceId":"i-OTHERFAKE"}]}]}' ;;
+      conn_vol_attaching_forever)
+        # attach-volume 요청은 이미 있었지만(또는 이전에 걸어 뒀지만) 계속 attaching인 채로
+        # 끝나지 않는 상황 — wait_for_volume_attached가 제한 시간 뒤 미완료로 보고해야 한다.
+        echo '{"Volumes":[{"VolumeId":"vol-existingfake","State":"attaching","Attachments":[{"State":"attaching","InstanceId":"i-existingfake"}]}]}' ;;
+      conn_vol_attaches_after_delay)
+        # 처음 조회(연결 여부 최초 확인)는 미연결 → attach-volume 호출 → 대기 루프 1회차는
+        # attaching → 2회차부터 attached. 실제 지연 후 정상 연결되는 상황을 재현한다.
+        cnt_file="${FAKE_AWS_CALL_LOG:-/tmp/fakevol}.volcount"
+        n=0; [ -f "$cnt_file" ] && n="$(cat "$cnt_file")"
+        n=$((n + 1)); echo "$n" > "$cnt_file"
+        if [ "$n" -le 1 ]; then
+          echo '{"Volumes":[{"VolumeId":"vol-existingfake","State":"available","Attachments":[]}]}'
+        elif [ "$n" -eq 2 ]; then
+          echo '{"Volumes":[{"VolumeId":"vol-existingfake","State":"attaching","Attachments":[{"State":"attaching","InstanceId":"i-existingfake"}]}]}'
+        else
+          echo '{"Volumes":[{"VolumeId":"vol-existingfake","State":"in-use","Attachments":[{"State":"attached","InstanceId":"i-existingfake"}]}]}'
+        fi
+        ;;
+      *)
+        # 기본값: attach-volume이 아직 호출 안 됐으면 미연결, 호출됐으면(마커 파일 존재) 그
+        # 인스턴스에 attached로 답한다 — 연결 명령 뒤 실제로 상태가 바뀌는 것처럼 재현한다.
+        marker="${FAKE_AWS_CALL_LOG:-}.vol_attached_to"
+        if [ -n "${FAKE_AWS_CALL_LOG:-}" ] && [ -f "$marker" ]; then
+          echo "{\"Volumes\":[{\"VolumeId\":\"vol-existingfake\",\"State\":\"in-use\",\"Attachments\":[{\"State\":\"attached\",\"InstanceId\":\"$(cat "$marker")\"}]}]}"
+        else
+          echo '{"Volumes":[{"VolumeId":"vol-existingfake","State":"available","Attachments":[]}]}'
+        fi
+        ;;
+    esac
+    ;;
+
+  create-volume)
+    if is_check_dryrun "$@"; then
+      echo "An error occurred (DryRunOperation) when calling CreateVolume: fake" >&2; exit 254
+    fi
+    echo "vol-newfake"
+    ;;
+
+  describe-instances)
+    if printf '%s\n' "$*" | grep -q -- "tag:Name"; then
+      # pendingInstanceCreateAt 복구용 태그 검색 — 실제 생성 여부를 확인하는 호출.
+      case "$MODE" in
+        instance_pending_recovered)
+          echo '{"Reservations":[{"Instances":[{"InstanceId":"i-recoveredfake","State":{"Name":"running"}}]}]}' ;;
+        instance_pending_none)
+          echo '{"Reservations":[]}' ;;
+        instance_pending_ambiguous)
+          echo '{"Reservations":[{"Instances":[{"InstanceId":"i-dup1"},{"InstanceId":"i-dup2"}]}]}' ;;
+        *)
+          echo '{"Reservations":[]}' ;;
+      esac
+    else
+      echo '{"Reservations":[{"Instances":[{"InstanceId":"i-existingfake","State":{"Name":"running"}}]}]}'
+    fi
+    ;;
+
+  run-instances)
+    if is_check_dryrun "$@"; then
+      echo "An error occurred (DryRunOperation) when calling RunInstances: fake" >&2; exit 254
+    fi
+    echo "i-newfake"
+    ;;
+
+  instance-running) exit 0 ;;
+  attach-volume)
+    # 이후 describe-volumes(기본 모드)가 "연결됨"으로 답하도록 마커를 남긴다 — 실제 연결 명령
+    # 뒤에 정말로 상태가 바뀌는 것처럼 흉내 내기 위함(그래야 재조회로 완료를 확인하는 로직을
+    # 의미 있게 테스트할 수 있다).
+    prev=""; iid=""
+    for a in "$@"; do [ "$prev" = "--instance-id" ] && iid="$a"; prev="$a"; done
+    [ -n "${FAKE_AWS_CALL_LOG:-}" ] && echo "$iid" > "${FAKE_AWS_CALL_LOG}.vol_attached_to"
+    exit 0 ;;
+  associate-address)
+    prev=""; iid=""
+    for a in "$@"; do [ "$prev" = "--instance-id" ] && iid="$a"; prev="$a"; done
+    [ -n "${FAKE_AWS_CALL_LOG:-}" ] && echo "$iid" > "${FAKE_AWS_CALL_LOG}.eip_attached_to"
+    exit 0 ;;
+  create-tags) exit 0 ;;
+
+  describe-addresses)
+    case "$MODE" in
+      conn_eip_attached_same|conn_all_attached_same)
+        echo '{"Addresses":[{"AllocationId":"eipalloc-fake","InstanceId":"i-existingfake"}]}' ;;
+      conn_eip_attached_other)
+        echo '{"Addresses":[{"AllocationId":"eipalloc-fake","InstanceId":"i-OTHERFAKE"}]}' ;;
+      conn_eip_never_associates)
+        echo '{"Addresses":[{"AllocationId":"eipalloc-fake"}]}' ;;  # InstanceId 없음 — 끝까지 연결 안 됨
+      *)
+        marker="${FAKE_AWS_CALL_LOG:-}.eip_attached_to"
+        if [ -n "${FAKE_AWS_CALL_LOG:-}" ] && [ -f "$marker" ]; then
+          echo "{\"Addresses\":[{\"AllocationId\":\"eipalloc-fake\",\"InstanceId\":\"$(cat "$marker")\"}]}"
+        else
+          echo '{"Addresses":[{"AllocationId":"eipalloc-fake"}]}'
+        fi
+        ;;
+    esac
+    ;;
+
+  describe-iam-instance-profile-associations)
+    if [ "$MODE" = "instance_reuse_profile_already_attached" ]; then
+      echo '{"IamInstanceProfileAssociations":[{"AssociationId":"iip-assoc-fake"}]}'
+    else
+      echo '{"IamInstanceProfileAssociations":[]}'
+    fi
+    ;;
+  associate-iam-instance-profile) exit 0 ;;
+
+  *)
+    echo "fake-aws: 처리 안 된 서브커맨드: $*" >&2; exit 1 ;;
+esac

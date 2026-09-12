@@ -6,6 +6,13 @@ apps/api는 이미 Cognito를 호출하는 코드(`apps/api/src/cognito/*`)를 �
 그 값을 안전하게 채우기 위한 준비 파일이며, **여기 있는 스크립트를 실행하기 전까지 AWS 자원은
 하나도 만들어지지 않는다.**
 
+**권한 상태(2026-09-12 갱신)**: Path A(`create-dev-pool.sh`)가 필요로 하는 "필요 권한" 6개
+액션은 admin이 부여했다고 확인됐다 — `cognito-idp:ListUserPools`를 실제 읽기 전용 호출로
+재확인함(계정에 DearDarling 이름의 Pool은 아직 없고, 다른 사내 프로젝트의 Pool만 존재 —
+이름 충돌 없음). 즉 더 이상 "권한 승인 대기" 상태가 아니며 Path A 실행 준비가 끝났다 — 단,
+이번엔 실제로 Pool·Client를 생성하지 않았다(범위 밖, EC2·PostgreSQL 구축을 먼저 완료한 뒤
+진행하기로 함). 실행 순서는 아래와 동일하다.
+
 ## 두 가지 경로
 
 - **Path A — 자동 생성 스크립트 (`create-dev-pool.sh`)**: 이 저장소를 다루는 사람의 IAM
