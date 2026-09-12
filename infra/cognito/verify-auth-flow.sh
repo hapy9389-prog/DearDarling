@@ -11,13 +11,26 @@
 # - 인증 흐름(1~9단계)과 DB 정리 확인(10단계)의 결과를 구분해서 보고한다 — DB 쪽을 확인할 수
 #   없다고 해서 전체를 실패로 만들지 않고, 반대로 확인 못 한 것을 완료로 보고하지도 않는다.
 #
-# 사용법: ./infra/cognito/verify-auth-flow.sh [--repo-root PATH]  (--repo-root는 자체 테스트 전용)
+# 사용법: ./infra/cognito/verify-auth-flow.sh [--repo-root PATH] [--resume-from-login]
+#   --repo-root PATH        자체 테스트 전용.
+#   --resume-from-login     이미 가입·인증까지 끝난 기존 테스트 계정으로 6-2단계부터 이어서
+#                            검증한다(1~6-1단계는 건너뛴다) — 6-2 이후는 6-2에서 새로 로그인하는
+#                            구조라 앞 단계 상태에 의존하지 않는다. 회원가입을 다시 시도하면
+#                            Cognito가 UsernameExistsException으로 거부하므로, 같은 계정으로
+#                            재시도할 때는 이 플래그를 쓴다.
 # 사전조건: apps/api에서 pnpm dev가 이미 떠 있고, .env의 LOCAL_TEST_AUTH가 true가 아님.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
-if [ "${1:-}" = "--repo-root" ]; then REPO_ROOT="$(cd "$2" && pwd)"; fi
+RESUME_FROM_LOGIN=0
+while [ $# -gt 0 ]; do
+  case "$1" in
+    --repo-root) REPO_ROOT="$(cd "$2" && pwd)"; shift 2 ;;
+    --resume-from-login) RESUME_FROM_LOGIN=1; shift ;;
+    *) shift ;;
+  esac
+done
 ENV_FILE="$REPO_ROOT/apps/api/.env"
 
 BASE="http://127.0.0.1:3000"
@@ -87,6 +100,11 @@ EMAILFILE="$(new_secret_file)"
 read -r -p "테스트용 실제 수신 가능 이메일: " EMAIL_INPUT
 printf '%s' "$EMAIL_INPUT" > "$EMAILFILE"
 
+if [ "$RESUME_FROM_LOGIN" = "1" ]; then
+  echo "[--resume-from-login] 1~6-1단계(회원가입~예전 쿠키 거부 확인)를 건너뛰고 6-2부터 이어갑니다."
+  STALE_JAR=""  # 이번 실행에서 새로 만들지 않았으므로 6-1 쿠키는 없음(정상 — 건너뛴 단계라 무해)
+else
+
 echo "=== 1) 회원가입 ==="
 PWFILE="$(new_secret_file)"; read_hidden_to_file "비밀번호(화면에 표시 안 됨): " "$PWFILE"
 P="$(payload_file "email=$EMAILFILE" "password=$PWFILE")"
@@ -144,6 +162,18 @@ else
   echo "건너뜀: 4번 단계에서 세션 쿠키를 확보하지 못했습니다."
 fi
 
+fi  # RESUME_FROM_LOGIN
+
+echo "=== 6-2) 재설정 전 별도 세션 확보(로그아웃하지 않음) — 재설정 직전 정상 접근 확인 ==="
+JAR3="$WORKDIR/session-c.cookies"; : > "$JAR3"; chmod 600 "$JAR3"
+OLDPWFILE="$(new_secret_file)"; read_hidden_to_file "비밀번호 다시 입력(재설정 전 세션용): " "$OLDPWFILE"
+P="$(payload_file "email=$EMAILFILE" "password=$OLDPWFILE")"
+CODE=$(post_json_file /api/auth/login "$JAR3" "$P"); rm -f "$P"
+[ "$CODE" = "200" ] || fail "재설정 전 세션 로그인 HTTP $CODE (기대: 200)"
+CODE=$(get_status /api/auth/me "$JAR3")
+[ "$CODE" = "200" ] && assert_json_field authenticated true || fail "재설정 직전 세션이 정상 접근되지 않습니다(HTTP $CODE, authenticated=true 기대)"
+ok "재설정 직전 별도 세션 정상 접근 확인(authenticated=true)"
+
 echo "=== 7) 비밀번호 재설정 ==="
 P="$(payload_file "email=$EMAILFILE")"
 CODE=$(post_json_file /api/auth/forgot-password "$JAR" "$P"); rm -f "$P"
@@ -155,6 +185,18 @@ P="$(payload_file "email=$EMAILFILE" "code=$RCODEFILE" "newPassword=$NPWFILE")"
 CODE=$(post_json_file /api/auth/confirm-forgot-password "$JAR" "$P"); rm -f "$P" "$RCODEFILE"
 [ "$CODE" = "200" ] || fail "비밀번호 재설정 확인 HTTP $CODE (기대: 200)"
 ok "비밀번호 재설정 완료"
+
+echo "=== 7-1) 재설정 직후: 재설정 전 세션 접근 차단 확인 ==="
+CODE=$(get_status /api/auth/me "$JAR3")
+[ "$CODE" = "200" ] && assert_json_field authenticated false || fail "비밀번호 재설정 후에도 이전 세션이 여전히 접근됩니다(HTTP $CODE) — 세션 차단이 안 된 것으로 보입니다"
+ok "비밀번호 재설정 후 이전 세션 접근 차단 확인(authenticated=false)"
+
+echo "=== 7-2) 재설정 직후: 예전 비밀번호 로그인 거부 확인 ==="
+DISCARD_JAR="$WORKDIR/discard.cookies"; : > "$DISCARD_JAR"; chmod 600 "$DISCARD_JAR"
+P="$(payload_file "email=$EMAILFILE" "password=$OLDPWFILE")"; rm -f "$OLDPWFILE"
+CODE=$(post_json_file /api/auth/login "$DISCARD_JAR" "$P"); rm -f "$P"
+[ "$CODE" = "401" ] || fail "예전 비밀번호 로그인이 거부되지 않았습니다(HTTP $CODE, 기대: 401)"
+ok "예전 비밀번호 로그인 거부 확인(HTTP 401)"
 
 echo "=== 8) 새 비밀번호로 재로그인 ==="
 P="$(payload_file "email=$EMAILFILE" "password=$NPWFILE")"

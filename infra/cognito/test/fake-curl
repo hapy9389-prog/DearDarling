@@ -7,7 +7,7 @@ MODE="${FAKE_HTTP_MODE:-happy}"
 STATE_DIR="${FAKE_HTTP_STATE_DIR:?FAKE_HTTP_STATE_DIR 필요}"
 mkdir -p "$STATE_DIR/tokens"
 
-OUT_FILE="/dev/null"; JAR_WRITE=""; JAR_READ=""
+OUT_FILE="/dev/null"; JAR_WRITE=""; JAR_READ=""; DATA_FILE=""
 args=("$@")
 n=${#args[@]}
 i=0
@@ -17,11 +17,24 @@ while [ $i -lt $n ]; do
     -o) i=$((i + 1)); OUT_FILE="${args[$i]}" ;;
     -c) i=$((i + 1)); JAR_WRITE="${args[$i]}" ;;
     -b) i=$((i + 1)); JAR_READ="${args[$i]}" ;;
+    --data) i=$((i + 1)); DATA_FILE="${args[$i]#@}" ;;
   esac
   i=$((i + 1))
 done
 URL="${args[$((n - 1))]}"
 PATH_ONLY="$(printf '%s' "$URL" | sed -E 's#^https?://[^/]+##')"
+
+# 요청 본문(JSON, verify-auth-flow.sh의 payload_file이 만든 것)에서 한 필드만 뽑는다.
+body_field() {  # $1=필드명
+  [ -n "$DATA_FILE" ] && [ -f "$DATA_FILE" ] || { printf ''; return 0; }
+  node -e '
+    const fs = require("fs");
+    try {
+      const body = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+      process.stdout.write(String(body[process.argv[2]] ?? ""));
+    } catch { /* 무시 */ }
+  ' "$DATA_FILE" "$1"
+}
 
 read_cookie_token() {  # $1=jar파일 -> dd_session 값(없으면 빈 문자열)
   [ -f "$1" ] || { printf ''; return 0; }
@@ -46,10 +59,30 @@ new_token() {
 emit() { printf '%s' "${2:-}" > "$OUT_FILE"; printf '%s' "$1"; }  # $1=http_code $2=body
 
 case "$PATH_ONLY" in
-  /api/auth/signup | /api/auth/confirm-signup | /api/auth/forgot-password | /api/auth/confirm-forgot-password)
+  /api/auth/signup | /api/auth/confirm-signup | /api/auth/forgot-password)
+    emit 200 '{}'
+    ;;
+  /api/auth/confirm-forgot-password)
+    # 실제 서버(authService.confirmForgotPassword)는 성공 시 auth_version을 올려 그 사용자의
+    # 기존 세션을 전부 차단한다 — 가짜 curl도 같은 인과관계를 흉내내려고 모든 토큰을 revoked로
+    # 바꾸고, 이후 로그인은 이 새 비밀번호로만 성공하도록 "현재 비밀번호"를 갱신해 둔다.
+    NEWPW="$(body_field newPassword)"
+    if [ -n "$NEWPW" ]; then printf '%s' "$NEWPW" > "$STATE_DIR/current_password"; fi
+    for f in "$STATE_DIR"/tokens/*.status; do [ -f "$f" ] && printf 'revoked' > "$f"; done
     emit 200 '{}'
     ;;
   /api/auth/login)
+    # 비밀번호 재설정이 한 번이라도 일어났으면(current_password 파일 존재) 그 값과 일치할 때만
+    # 로그인을 허용한다 — "예전 비밀번호 로그인 거부"를 오프라인으로 검증하기 위해서다. 재설정
+    # 전에는(파일이 없으면) 어떤 비밀번호든 통과시킨다(가입 시점 검증은 이 가짜의 범위 밖).
+    if [ -f "$STATE_DIR/current_password" ]; then
+      GIVEN_PW="$(body_field password)"
+      CURRENT_PW="$(cat "$STATE_DIR/current_password")"
+      if [ "$GIVEN_PW" != "$CURRENT_PW" ]; then
+        emit 401 '{"error":"invalid-credentials"}'
+        exit 0
+      fi
+    fi
     TOKEN="$(new_token)"
     mark_token "$TOKEN" active
     [ -n "$JAR_WRITE" ] && write_cookie_token "$JAR_WRITE" "$TOKEN"

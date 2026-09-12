@@ -21,8 +21,8 @@ EOF
   printf '%s' "$WORK"
 }
 
-# 7줄: 이메일, 가입비번, 인증코드, 로그인비번, 재설정코드, 새비번, 두번째세션비번
-STDIN_LINES=$'tester@example.com\npw1\ncode1\npw1\nresetcode1\nnewpw1\nnewpw1\n'
+# 8줄: 이메일, 가입비번, 인증코드, 로그인비번, 재설정전세션비번, 재설정코드, 새비번, 두번째세션비번
+STDIN_LINES=$'tester@example.com\npw1\ncode1\npw1\npw1\nresetcode1\nnewpw1\nnewpw1\n'
 
 run_once() {  # $1=WORK $2=FAKE_HTTP_MODE $3=FAKE_PSQL_MODE $4=poll_attempts $5=poll_interval
   local WORK="$1"
@@ -31,6 +31,17 @@ run_once() {  # $1=WORK $2=FAKE_HTTP_MODE $3=FAKE_PSQL_MODE $4=poll_attempts $5=
     FAKE_PSQL_MODE="$3" CLEANUP_POLL_ATTEMPTS="$4" CLEANUP_POLL_INTERVAL_SECONDS="$5" \
     bash "$WORK/repo/infra/cognito/verify-auth-flow.sh" --repo-root "$WORK/repo" \
     <<<"$STDIN_LINES" > "$WORK/run.log" 2>&1
+}
+
+# 5줄(--resume-from-login용): 이메일, 재설정전세션비번, 재설정코드, 새비번, 두번째세션비번
+RESUME_STDIN_LINES=$'tester@example.com\npw1\nresetcode1\nnewpw1\nnewpw1\n'
+run_once_resume() {  # $1=WORK $2=FAKE_HTTP_MODE $3=FAKE_PSQL_MODE $4=poll_attempts $5=poll_interval
+  local WORK="$1"
+  PATH="$WORK/bin:/usr/bin:/bin:/usr/local/bin" \
+    FAKE_HTTP_MODE="$2" FAKE_HTTP_STATE_DIR="$WORK/httpstate" \
+    FAKE_PSQL_MODE="$3" CLEANUP_POLL_ATTEMPTS="$4" CLEANUP_POLL_INTERVAL_SECONDS="$5" \
+    bash "$WORK/repo/infra/cognito/verify-auth-flow.sh" --repo-root "$WORK/repo" --resume-from-login \
+    <<<"$RESUME_STDIN_LINES" > "$WORK/run.log" 2>&1
 }
 
 report() {  # $1=이름 $2=WORK $3=0/1
@@ -47,6 +58,25 @@ ok=1
 grep -q "인증 흐름 검증(1~9단계): 통과" "$W/run.log" || ok=0
 grep -q "DB 정리 상태 확인(10단계): 완료" "$W/run.log" || ok=0
 report "happy-path-with-db-cleanup-confirmed" "$W" "$ok"
+
+# 1-1) 비밀번호 재설정 검증: 재설정 전 별도 세션의 직전 정상 접근·직후 접근 차단, 예전 비밀번호 로그인 거부
+W="$(setup_work with_psql)"; run_once "$W" happy normal 3 0; RC=$?
+ok=1
+[ "$RC" -eq 0 ] || ok=0
+grep -q "재설정 직전 별도 세션 정상 접근 확인" "$W/run.log" || ok=0
+grep -q "비밀번호 재설정 후 이전 세션 접근 차단 확인" "$W/run.log" || ok=0
+grep -q "예전 비밀번호 로그인 거부 확인(HTTP 401)" "$W/run.log" || ok=0
+report "password-reset-session-and-old-password-checks" "$W" "$ok"
+
+# 1-2) --resume-from-login: 1~6-1단계를 건너뛰고 6-2부터 통과해야 함(회원가입 재시도 없음)
+W="$(setup_work with_psql)"; run_once_resume "$W" happy normal 3 0; RC=$?
+ok=1
+[ "$RC" -eq 0 ] || ok=0
+grep -q "\-\-resume-from-login" "$W/run.log" || ok=0
+grep -q "회원가입 요청 접수" "$W/run.log" && ok=0
+grep -q "재설정 직전 별도 세션 정상 접근 확인" "$W/run.log" || ok=0
+grep -q "인증 흐름 검증(1~9단계): 통과" "$W/run.log" || ok=0
+report "resume-from-login-skips-signup-and-passes" "$W" "$ok"
 
 # 2) logout 오류 응답 -> 5단계에서 중단, 7단계(비밀번호 재설정) 도달 안 함
 W="$(setup_work with_psql)"; run_once "$W" logout_error normal 3 0; RC=$?
